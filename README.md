@@ -25,5 +25,5 @@ To build and run the application, ensure you have the following installed:
 - Compile the application using gcc:
   
 ```bash
-gcc -o music_player music_player.c `pkg-config --cflags --libs gtk+-3.0` -lpthread
+gcc -o muzio muzio.c `pkg-config --cflags --libs gtk+-3.0` -lpthread
 ./muzio
