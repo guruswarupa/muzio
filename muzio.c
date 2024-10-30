@@ -55,15 +55,20 @@ void enqueue(CircularQueue* queue, const char* song_name) {
     g_mutex_unlock(&queue_mutex);  // Unlock the mutex
 }
 
+// Calculate the number of items in the queue
+int queue_size(CircularQueue* queue) {
+    return (queue->rear - queue->front + queue->capacity) % queue->capacity;
+}
+
 // Dequeue a song name
 const char* dequeue(CircularQueue* queue) {
     g_mutex_lock(&queue_mutex);  // Lock the mutex
     if (is_empty(queue)) {
-        printf("Queue is empty!\n");
         g_mutex_unlock(&queue_mutex);  // Unlock the mutex
         return NULL;
     }
     const char* dequeued_item = queue->items[queue->front];
+    queue->items[queue->front] = NULL; // Clear the pointer after dequeueing
     queue->front = (queue->front + 1) % queue->capacity;
     g_mutex_unlock(&queue_mutex);  // Unlock the mutex
     return dequeued_item;
@@ -128,7 +133,7 @@ void shuffle_songs() {
 
     // Shuffle the song queue using Fisher-Yates shuffle
     srand(time(NULL)); // Seed the random number generator
-    int count = (song_queue.rear - song_queue.front + song_queue.capacity) % song_queue.capacity;
+    int count = queue_size(&song_queue); // Use the correct size calculation
 
     for (int i = count - 1; i > 0; i--) {
         int j = rand() % (i + 1); // Generate a random index
@@ -158,17 +163,25 @@ void play_song(const char *song_name) {
     }
 }
 
-// Function to handle play button click
-void play_songs(GtkWidget *widget, gpointer data) {
-    shuffle_songs();
+void *play_songs_thread(void *data) {
+    shuffle_songs();  // Shuffle before playing
 
-    while (!is_empty(&song_queue)) {
+    while (1) {  // Infinite loop to keep playing songs
+        if (is_empty(&song_queue)) {
+            shuffle_songs();  // Shuffle the songs again once the queue is empty
+        }
+
         const char *song_name = dequeue(&song_queue);
         if (song_name) {
             play_song(song_name);  // Play the song
-            free((char *)song_name); // Free the song name after playing
+            enqueue(&song_queue, song_name);  // Re-enqueue the song to keep it in the loop
         }
     }
+    return NULL;
+}
+
+void play_songs(GtkWidget *widget, gpointer data) {
+    g_thread_new("play_songs_thread", play_songs_thread, NULL);  // Create a new thread for song playback
 }
 
 // Function to handle the main window destruction
@@ -177,8 +190,13 @@ void on_main_window_destroy(GtkWidget *widget, gpointer data) {
         g_thread_join(download_thread); // Wait for the download thread to finish
         download_thread = NULL; // Reset the thread reference
     }
+
+    // Kill all VLC processes to stop song playback when the app is closed
+    system("pkill vlc");
+
     gtk_main_quit(); // Exit the GTK main loop
 }
+
 
 // Function to create the main window
 void create_main_window() {
@@ -238,4 +256,4 @@ int main(int argc, char *argv[]) {
     free(song_queue.items);
     g_mutex_clear(&queue_mutex); // Clear the mutex
     return 0;
-}
+} 
