@@ -3,257 +3,256 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
-#include <glib.h> // Include GLib for GThread
-#include <time.h> 
+#include <glib.h>
+#include <time.h>
 
-#define MUSIC_DIR "/home/msgs/Music"
-#define QUEUE_CAPACITY 100  // Set a reasonable capacity for the circular queue
+#define MUSIC_DIR "/home/msgs/hdd/msgs/Music"
 
-typedef struct CircularQueue {
-    char **items; // Array of song names
-    int front;
-    int rear;
-    int capacity;
-} CircularQueue;
+typedef struct Node {
+    char *song_name;
+    struct Node *next;
+    struct Node *prev;
+} Node;
+
+typedef struct CircularDoublyLinkedList {
+    Node *head;
+} CircularDoublyLinkedList;
 
 GtkWidget *url_entry;
 GtkWidget *main_window;
-CircularQueue song_queue; // Declare a circular queue for songs
-GMutex queue_mutex;       // Mutex to protect access to the queue
-GThread *download_thread = NULL; // Thread for downloading songs
+GtkWidget *status_label;
+CircularDoublyLinkedList song_list;
+GMutex list_mutex;
+GThread *download_thread = NULL;
+Node *current_song = NULL;
 
-// Function to initialize the circular queue
-void init_queue(CircularQueue* queue) {
-    queue->capacity = QUEUE_CAPACITY;
-    queue->items = (char**)malloc(queue->capacity * sizeof(char*));
-    queue->front = 0;
-    queue->rear = 0;
+void init_list(CircularDoublyLinkedList *list) {
+    list->head = NULL;
 }
 
-// Check if the queue is full
-int is_full(CircularQueue* queue) {
-    return (queue->rear + 1) % queue->capacity == queue->front;
+int is_empty(CircularDoublyLinkedList *list) {
+    return list->head == NULL;
 }
 
-// Check if the queue is empty
-int is_empty(CircularQueue* queue) {
-    return queue->front == queue->rear;
-}
+void add_song(CircularDoublyLinkedList *list, const char *song_name) {
+    g_mutex_lock(&list_mutex);
+    Node *new_node = (Node *)malloc(sizeof(Node));
+    new_node->song_name = strdup(song_name);
 
-// Enqueue a song name
-void enqueue(CircularQueue* queue, const char* song_name) {
-    g_mutex_lock(&queue_mutex);  // Lock the mutex
-    if (is_full(queue)) {
-        printf("Queue is full!\n");
-        g_mutex_unlock(&queue_mutex);  // Unlock the mutex
-        return;
+    if (is_empty(list)) {
+        new_node->next = new_node;
+        new_node->prev = new_node;
+        list->head = new_node;
+    } else {
+        Node *tail = list->head->prev;
+        tail->next = new_node;
+        new_node->prev = tail;
+        new_node->next = list->head;
+        list->head->prev = new_node;
     }
-    queue->items[queue->rear] = strdup(song_name); // Duplicate the string
-    queue->rear = (queue->rear + 1) % queue->capacity;
-    g_mutex_unlock(&queue_mutex);  // Unlock the mutex
+    g_mutex_unlock(&list_mutex);
 }
 
-// Calculate the number of items in the queue
-int queue_size(CircularQueue* queue) {
-    return (queue->rear - queue->front + queue->capacity) % queue->capacity;
-}
-
-// Dequeue a song name
-const char* dequeue(CircularQueue* queue) {
-    g_mutex_lock(&queue_mutex);  // Lock the mutex
-    if (is_empty(queue)) {
-        g_mutex_unlock(&queue_mutex);  // Unlock the mutex
-        return NULL;
-    }
-    const char* dequeued_item = queue->items[queue->front];
-    queue->items[queue->front] = NULL; // Clear the pointer after dequeueing
-    queue->front = (queue->front + 1) % queue->capacity;
-    g_mutex_unlock(&queue_mutex);  // Unlock the mutex
-    return dequeued_item;
-}
-
-// Function to download the song
 void *download_song_thread(void *data) {
-    const char *url = (const char *)data; // Get the URL from the passed data
+    const char *url = (const char *)data;
     char command[512];
-
-    // Prepare the yt-dlp command with optimizations
     snprintf(command, sizeof(command), "yt-dlp -x --audio-format mp3 -f bestaudio --embed-thumbnail --no-warnings --no-check-certificate --hls-prefer-native \"%s\" -o \"%s/%(title)s.%%(ext)s\"", url, MUSIC_DIR);
     system(command);
-    
-    // After downloading, enqueue the new song
-    char *song_name = strrchr(url, '/') + 1; // Extract the song name from URL
-    enqueue(&song_queue, song_name); // Enqueue the song name
 
-    // Free the URL string after usage
+    gtk_label_set_text(GTK_LABEL(status_label), "Download Complete");
+    char *song_name = strrchr(url, '/') + 1;
+    add_song(&song_list, song_name);
+
     free((void *)data);
     return NULL;
 }
 
-// Function called when download button is clicked
-void download_song(GtkWidget *widget, gpointer data) {
+void download_song_button(GtkWidget *widget, gpointer data) {
     const char *url = gtk_entry_get_text(GTK_ENTRY(url_entry));
     if (strlen(url) == 0) {
-        g_print("No URL provided.\n");
+        gtk_label_set_text(GTK_LABEL(status_label), "No URL provided.");
         return;
     }
 
-    // Duplicate the URL string to pass to the thread
     char *url_copy = strdup(url);
-    
-    // Create a new thread to download the song
     download_thread = g_thread_new("download_thread", download_song_thread, url_copy);
-    
-    gtk_entry_set_text(GTK_ENTRY(url_entry), ""); // Clear entry
+    gtk_entry_set_text(GTK_ENTRY(url_entry), "");
+    gtk_label_set_text(GTK_LABEL(status_label), "Downloading...");
 }
 
-// Function to shuffle the songs
 void shuffle_songs() {
     DIR *dir;
     struct dirent *ent;
 
-    // Clear previous queue
-    while (!is_empty(&song_queue)) {
-        free((char *)dequeue(&song_queue)); // Free the dequeued item
+    while (!is_empty(&song_list)) {
+        Node *to_remove = song_list.head;
+        if (to_remove->next == song_list.head) {
+            free(to_remove->song_name);
+            free(to_remove);
+            song_list.head = NULL;
+        } else {
+            Node *tail = to_remove->prev;
+            song_list.head = to_remove->next;
+            tail->next = song_list.head;
+            song_list.head->prev = tail;
+            free(to_remove->song_name);
+            free(to_remove);
+        }
     }
 
-    // Open the music directory
     if ((dir = opendir(MUSIC_DIR)) != NULL) {
         while ((ent = readdir(dir)) != NULL) {
-            // Check if it is an mp3 file
             if (strstr(ent->d_name, ".mp3")) {
-                // Add song to queue
-                enqueue(&song_queue, ent->d_name);
+                add_song(&song_list, ent->d_name);
             }
         }
         closedir(dir);
     }
 
-    // Shuffle the song queue using Fisher-Yates shuffle
-    srand(time(NULL)); // Seed the random number generator
-    int count = queue_size(&song_queue); // Use the correct size calculation
+    srand(time(NULL));
+    int count = 0;
+    Node *current = song_list.head;
+
+    if (!is_empty(&song_list)) {
+        do {
+            count++;
+            current = current->next;
+        } while (current != song_list.head);
+    }
+
+    Node **nodes = malloc(count * sizeof(Node *));
+    current = song_list.head;
+    for (int i = 0; i < count; i++) {
+        nodes[i] = current;
+        current = current->next;
+    }
 
     for (int i = count - 1; i > 0; i--) {
-        int j = rand() % (i + 1); // Generate a random index
-        // Swap the songs at indices i and j
-        char *temp = song_queue.items[(song_queue.front + i) % song_queue.capacity];
-        song_queue.items[(song_queue.front + i) % song_queue.capacity] = song_queue.items[(song_queue.front + j) % song_queue.capacity];
-        song_queue.items[(song_queue.front + j) % song_queue.capacity] = temp;
+        int j = rand() % (i + 1);
+        Node *temp = nodes[i];
+        nodes[i] = nodes[j];
+        nodes[j] = temp;
     }
+
+    init_list(&song_list);
+    for (int i = 0; i < count; i++) {
+        add_song(&song_list, nodes[i]->song_name);
+    }
+    free(nodes);
 }
 
-// Function to play the song using popen (hide VLC window)
-void play_song(const char *song_name) {
-    char command[512];
-    snprintf(command, sizeof(command), "cvlc --play-and-exit \"%s/%s\"", MUSIC_DIR, song_name); // Use cvlc for CLI VLC
+void stop_current_song() {
+    system("pkill vlc");
+}
 
-    // Open the command for reading
+void *play_song_thread(void *data) {
+    char *song_name = (char *)data;
+    stop_current_song();
+
+    char command[512];
+    snprintf(command, sizeof(command), "cvlc --play-and-exit \"%s/%s\"", MUSIC_DIR, song_name);
     FILE *fp = popen(command, "r");
     if (fp == NULL) {
         perror("Failed to run VLC");
-        return;
+        return NULL;
     }
-
-    // Wait for the VLC process to finish
     int status = pclose(fp);
     if (status == -1) {
         perror("Failed to close the VLC process");
     }
-}
 
-void *play_songs_thread(void *data) {
-    shuffle_songs();  // Shuffle before playing
-
-    while (1) {  // Infinite loop to keep playing songs
-        if (is_empty(&song_queue)) {
-            shuffle_songs();  // Shuffle the songs again once the queue is empty
-        }
-
-        const char *song_name = dequeue(&song_queue);
-        if (song_name) {
-            play_song(song_name);  // Play the song
-            enqueue(&song_queue, song_name);  // Re-enqueue the song to keep it in the loop
-        }
+    if (current_song) {
+        current_song = current_song->next;
+    } else {
+        current_song = song_list.head;
     }
     return NULL;
 }
 
-void play_songs(GtkWidget *widget, gpointer data) {
-    g_thread_new("play_songs_thread", play_songs_thread, NULL);  // Create a new thread for song playback
+void play_song(const char *song_name) {
+    g_thread_new("play_song_thread", play_song_thread, strdup(song_name));
 }
 
-// Function to handle the main window destruction
-void on_main_window_destroy(GtkWidget *widget, gpointer data) {
-    if (download_thread) {
-        g_thread_join(download_thread); // Wait for the download thread to finish
-        download_thread = NULL; // Reset the thread reference
+void play_song_button(GtkWidget *widget, gpointer data) {
+    if (current_song == NULL) {
+        current_song = song_list.head;
     }
 
-    // Kill all VLC processes to stop song playback when the app is closed
-    system("pkill vlc");
-
-    gtk_main_quit(); // Exit the GTK main loop
+    if (current_song) {
+        play_song(current_song->song_name);
+        gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "No song to play.");
+    }
 }
 
+void play_next_song() {
+    if (current_song && current_song->next) {
+        current_song = current_song->next;
+        play_song(current_song->song_name);
+        gtk_label_set_text(GTK_LABEL(status_label), "Playing Next Song...");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "No next song to play.");
+    }
+}
 
-// Function to create the main window
-void create_main_window() {
-    main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(main_window), "Muzio");
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);
-    gtk_window_set_resizable(GTK_WINDOW(main_window), FALSE);
-    gtk_window_set_position(GTK_WINDOW(main_window), GTK_WIN_POS_CENTER);
-    
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+void *play_next_song_thread(void *data) {
+    play_next_song();
+    return NULL;
+}
+
+void next_song_button(GtkWidget *widget, gpointer data) {
+    g_thread_new("next_song_thread", play_next_song_thread, NULL);
+}
+
+void create_ui() {
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
-    GtkWidget *title_label = gtk_label_new("Welcome to Muzio");
-    gtk_widget_set_name(title_label, "title_label");
-    gtk_box_pack_start(GTK_BOX(vbox), title_label, FALSE, FALSE, 0);
-
     url_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter song URL...");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);
 
     GtkWidget *download_button = gtk_button_new_with_label("Download Song");
-    gtk_widget_set_name(download_button, "download_button");
-    g_signal_connect(download_button, "clicked", G_CALLBACK(download_song), NULL);
+    g_signal_connect(download_button, "clicked", G_CALLBACK(download_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), download_button, FALSE, FALSE, 0);
 
-    GtkWidget *play_button = gtk_button_new_with_label("Play Songs");
-    gtk_widget_set_name(play_button, "play_button");
-    g_signal_connect(play_button, "clicked", G_CALLBACK(play_songs), NULL);
+    GtkWidget *play_button = gtk_button_new_with_label("Play Song");
+    g_signal_connect(play_button, "clicked", G_CALLBACK(play_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), play_button, FALSE, FALSE, 0);
 
-    g_signal_connect(main_window, "destroy", G_CALLBACK(on_main_window_destroy), NULL);
-    gtk_widget_show_all(main_window);
+    GtkWidget *next_button = gtk_button_new_with_label("Next Song");
+    g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), next_button, FALSE, FALSE, 0);
 
-    // CSS Styling
+    status_label = gtk_label_new("");
+    gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
+}
+
+void add_css_style() {
+    // Load and apply CSS
     GtkCssProvider *css_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_data(css_provider, 
-        "#title_label { font-size: 24px; font-weight: bold; color: #4A90E2; }"
-        "#download_button { background-color: #4CAF50; color: white; }"
-        "#play_button { background-color: #2196F3; color: white; }"
-        "GtkEntry { border: 1px solid #4A90E2; padding: 5px; }"
-        "GtkButton:hover { background-color: #007BFF; }", -1, NULL);
-    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), 
-        GTK_STYLE_PROVIDER(css_provider), GTK_STYLE_PROVIDER_PRIORITY_USER);
+    gtk_css_provider_load_from_path(css_provider, "style.css", NULL);
+    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+        GTK_STYLE_PROVIDER(css_provider),
+        GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
-    g_mutex_init(&queue_mutex); // Initialize the mutex
-    init_queue(&song_queue); // Initialize the circular queue
-    create_main_window();
+    init_list(&song_list);
+    g_mutex_init(&list_mutex);
+
+    main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(main_window), "Muzio");
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
+    g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+
+    create_ui();
+    add_css_style();
+    shuffle_songs();
+
+    gtk_widget_show_all(main_window);
     gtk_main();
-    
-    // Free allocated memory
-    for (int i = 0; i < song_queue.capacity; i++) {
-        free(song_queue.items[i]);
-    }
-    free(song_queue.items);
-    g_mutex_clear(&queue_mutex); // Clear the mutex
     return 0;
-} 
+}

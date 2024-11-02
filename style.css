@@ -1,0 +1,64 @@
+/* Main window styling */
+window {
+    padding: 20px;
+    background-color: #2E3440; /* Nord background */
+    color: #D8DEE9; /* Nord text color */
+    font-family: "Segoe UI", "Arial"; /* Common Windows font */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Optional shadow */
+}
+
+/* Sleek top bar (header) styling */
+headerbar {
+    background-color: rgba(59, 66, 82, 0.8); /* Nord header background */
+    color: #ECEFF4; /* Light text */
+    font-size: 15px;
+    font-weight: bold;
+    padding: 8px 15px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Styling for all buttons */
+button {
+    padding: 10px 20px;
+    margin-top: 10px;
+    font-weight: bold;
+    background-color: #5E81AC; /* Nord blue */
+    color: #ECEFF4; /* Light text */
+    border: none; /* Remove border */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+button:hover {
+    background-color: #81A1C1; /* Lighter Nord blue on hover */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+button:active {
+    background-color: #4C566A; /* Darker Nord color on active */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Styling for entry (URL input field) */
+entry {
+    padding: 8px 15px;
+    font-size: 14px;
+    background-color: #3B4252; /* Nord darker background */
+    color: #ECEFF4; /* Light text */
+    border: 1px solid #5E81AC; /* Nord blue border */
+    margin-top: 10px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+entry:focus {
+    border-color: #88C0D0; /* Focus color in Nord theme */
+    outline: none;
+}
+
+/* Status label styling */
+label {
+    color: #8FBCBB; /* Nord light teal text */
+    font-size: 14px;
+    font-weight: bold;
+    margin-top: 15px;
+}
