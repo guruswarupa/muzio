@@ -1,12 +1,12 @@
 # Muzio - Music Player Application (ALPHA)
 
-Muzio is a simple music player application developed using GTK and C. It allows users to download songs from URLs (YouTube) and play them in a circular queue. The application is designed to be straightforward and user-friendly.
+Muzio is a simple music player application developed using GTK and C. It allows users to download songs from URLs (YouTube) and play them in a circular doubly linked list. The application is designed to be straightforward and user-friendly.
 
 ## Features
 
 - **Download Songs**: Users can input a song URL, and the application will download the song in MP3 format using `yt-dlp`.
 - **Play Songs**: The application plays songs from a shuffled queue of downloaded songs.
-- **Circular Queue**: Songs are managed using a circular queue, ensuring efficient memory usage and quick access to song playback.
+- **Circular Doubly Linked List**: Songs are managed using a circular doubly linked list, ensuring efficient memory usage and quick access to song playback.
 - **Multithreading**: The application downloads songs in a separate thread, allowing the user interface to remain responsive.
 
 ## Dependencies

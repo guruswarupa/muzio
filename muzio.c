@@ -281,6 +281,7 @@ int main(int argc, char *argv[]) {
 
     if (!is_empty(&song_list)) {
         current_song = song_list.head;
+        play_song(current_song->song_name);  // Automatically play the first song
     }
 
     gtk_widget_show_all(main_window);
@@ -289,4 +290,4 @@ int main(int argc, char *argv[]) {
     gst_element_set_state(pipeline, GST_STATE_NULL);  // Cleanup GStreamer
     gst_object_unref(pipeline);
     return 0;
-} 
+}
