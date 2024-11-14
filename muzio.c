@@ -81,67 +81,6 @@ void download_song_button(GtkWidget *widget, gpointer data) {
     gtk_label_set_text(GTK_LABEL(status_label), "Downloading...");
 }
 
-void shuffle_songs() {
-    DIR *dir;
-    struct dirent *ent;
-
-    while (!is_empty(&song_list)) {
-        Node *to_remove = song_list.head;
-        if (to_remove->next == song_list.head) {
-            free(to_remove->song_name);
-            free(to_remove);
-            song_list.head = NULL;
-        } else {
-            Node *tail = to_remove->prev;
-            song_list.head = to_remove->next;
-            tail->next = song_list.head;
-            song_list.head->prev = tail;
-            free(to_remove->song_name);
-            free(to_remove);
-        }
-    }
-
-    if ((dir = opendir(MUSIC_DIR)) != NULL) {
-        while ((ent = readdir(dir)) != NULL) {
-            if (strstr(ent->d_name, ".mp3")) {
-                add_song(&song_list, ent->d_name);
-            }
-        }
-        closedir(dir);
-    }
-
-    srand(time(NULL));
-    int count = 0;
-    Node *current = song_list.head;
-
-    if (!is_empty(&song_list)) {
-        do {
-            count++;
-            current = current->next;
-        } while (current != song_list.head);
-    }
-
-    Node **nodes = malloc(count * sizeof(Node *));
-    current = song_list.head;
-    for (int i = 0; i < count; i++) {
-        nodes[i] = current;
-        current = current->next;
-    }
-
-    for (int i = count - 1; i > 0; i--) {
-        int j = rand() % (i + 1);
-        Node *temp = nodes[i];
-        nodes[i] = nodes[j];
-        nodes[j] = temp;
-    }
-
-    init_list(&song_list);
-    for (int i = 0; i < count; i++) {
-        add_song(&song_list, nodes[i]->song_name);
-    }
-    free(nodes);
-}
-
 void stop_current_song() {
     system("pkill vlc");
 }
@@ -192,6 +131,10 @@ void play_next_song() {
         current_song = current_song->next;
         play_song(current_song->song_name);
         gtk_label_set_text(GTK_LABEL(status_label), "Playing Next Song...");
+    } else if (current_song) {
+        current_song = song_list.head; 
+        play_song(current_song->song_name);
+        gtk_label_set_text(GTK_LABEL(status_label), "Playing First Song (Looping)...");
     } else {
         gtk_label_set_text(GTK_LABEL(status_label), "No next song to play.");
     }
@@ -204,6 +147,30 @@ void *play_next_song_thread(void *data) {
 
 void next_song_button(GtkWidget *widget, gpointer data) {
     g_thread_new("next_song_thread", play_next_song_thread, NULL);
+}
+
+void play_previous_song() {
+    if (current_song && current_song->prev->prev) {
+        current_song = current_song->prev->prev;
+    } else if (current_song) {
+        current_song = song_list.head->prev; // Loop to last song
+    }
+
+    if (current_song) {
+        play_song(current_song->song_name);
+        gtk_label_set_text(GTK_LABEL(status_label), "Playing Previous Song...");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "No previous song to play.");
+    }
+}
+
+void *play_previous_song_thread(void *data) {
+    play_previous_song();
+    return NULL;
+}
+
+void previous_song_button(GtkWidget *widget, gpointer data) {
+    g_thread_new("previous_song_thread", play_previous_song_thread, NULL);
 }
 
 void create_ui() {
@@ -225,17 +192,36 @@ void create_ui() {
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), next_button, FALSE, FALSE, 0);
 
+    GtkWidget *previous_button = gtk_button_new_with_label("Previous Song");
+    g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), previous_button, FALSE, FALSE, 0);
+
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
 
 void add_css_style() {
-    // Load and apply CSS
     GtkCssProvider *css_provider = gtk_css_provider_new();
     gtk_css_provider_load_from_path(css_provider, "style.css", NULL);
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(css_provider),
         GTK_STYLE_PROVIDER_PRIORITY_USER);
+}
+
+void load_songs_from_directory() {
+    DIR *dir;
+    struct dirent *ent;
+
+    if ((dir = opendir(MUSIC_DIR)) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            if (strstr(ent->d_name, ".mp3")) {
+                add_song(&song_list, ent->d_name);
+            }
+        }
+        closedir(dir);
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "Error opening music directory.");
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -250,7 +236,11 @@ int main(int argc, char *argv[]) {
 
     create_ui();
     add_css_style();
-    shuffle_songs();
+    load_songs_from_directory();
+
+    if (!is_empty(&song_list)) {
+        current_song = song_list.head;
+    }
 
     gtk_widget_show_all(main_window);
     gtk_main();
