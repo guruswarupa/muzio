@@ -16,9 +16,9 @@ To build and run the application, ensure you have the following installed:
 - GTK 3
 - GLib
 - `yt-dlp` for downloading songs
-- VLC for playing songs (using `cvlc`)
+- gstreamer for playing songs
 
-![alt text](image.png)
+![Working app image](image.png)
 
 ## Build Instructions
 ### Clone or download the repository to your local machine.
@@ -27,6 +27,6 @@ To build and run the application, ensure you have the following installed:
 - Compile the application using gcc:
 
 ```bash
-gcc -o muzio muzio.c `pkg-config --cflags --libs gtk+-3.0` -lpthread
+gcc -o muzio muzio.c `pkg-config --cflags --libs gtk+-3.0 gstreamer-1.0`
 ./muzio
 

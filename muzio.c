@@ -3,8 +3,8 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <glib.h>
+#include <gst/gst.h>
 #include <time.h>
 
 #define MUSIC_DIR "/home/msgs/hdd/msgs/Music"
@@ -26,6 +26,7 @@ CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
 Node *current_song = NULL;
+GstElement *pipeline = NULL;
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
@@ -82,35 +83,19 @@ void download_song_button(GtkWidget *widget, gpointer data) {
 }
 
 void stop_current_song() {
-    system("pkill vlc");
-}
-
-void *play_song_thread(void *data) {
-    char *song_name = (char *)data;
-    stop_current_song();
-
-    char command[512];
-    snprintf(command, sizeof(command), "cvlc --play-and-exit \"%s/%s\"", MUSIC_DIR, song_name);
-    FILE *fp = popen(command, "r");
-    if (fp == NULL) {
-        perror("Failed to run VLC");
-        return NULL;
+    if (pipeline) {
+        gst_element_set_state(pipeline, GST_STATE_NULL);
     }
-    int status = pclose(fp);
-    if (status == -1) {
-        perror("Failed to close the VLC process");
-    }
-
-    if (current_song) {
-        current_song = current_song->next;
-    } else {
-        current_song = song_list.head;
-    }
-    return NULL;
 }
 
 void play_song(const char *song_name) {
-    g_thread_new("play_song_thread", play_song_thread, strdup(song_name));
+    stop_current_song();
+
+    gchar *file_path = g_strdup_printf("file://%s/%s", MUSIC_DIR, song_name);
+    g_object_set(G_OBJECT(pipeline), "uri", file_path, NULL);
+    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
+    g_free(file_path);
 }
 
 void play_song_button(GtkWidget *widget, gpointer data) {
@@ -120,7 +105,6 @@ void play_song_button(GtkWidget *widget, gpointer data) {
 
     if (current_song) {
         play_song(current_song->song_name);
-        gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
     } else {
         gtk_label_set_text(GTK_LABEL(status_label), "No song to play.");
     }
@@ -140,23 +124,13 @@ void play_next_song() {
     }
 }
 
-void *play_next_song_thread(void *data) {
-    play_next_song();
-    return NULL;
-}
-
 void next_song_button(GtkWidget *widget, gpointer data) {
-    g_thread_new("next_song_thread", play_next_song_thread, NULL);
+    play_next_song();
 }
 
 void play_previous_song() {
-    if (current_song && current_song->prev->prev) {
-        current_song = current_song->prev->prev;
-    } else if (current_song) {
-        current_song = song_list.head->prev; // Loop to last song
-    }
-
-    if (current_song) {
+    if (current_song && current_song->prev) {
+        current_song = current_song->prev;
         play_song(current_song->song_name);
         gtk_label_set_text(GTK_LABEL(status_label), "Playing Previous Song...");
     } else {
@@ -164,51 +138,60 @@ void play_previous_song() {
     }
 }
 
-void *play_previous_song_thread(void *data) {
+void previous_song_button(GtkWidget *widget, gpointer data) {
     play_previous_song();
-    return NULL;
 }
 
-void previous_song_button(GtkWidget *widget, gpointer data) {
-    g_thread_new("previous_song_thread", play_previous_song_thread, NULL);
+static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
+    switch (GST_MESSAGE_TYPE(msg)) {
+        case GST_MESSAGE_EOS:
+            play_next_song();
+            break;
+        case GST_MESSAGE_ERROR: {
+            GError *err;
+            gchar *debug;
+            gst_message_parse_error(msg, &err, &debug);
+            g_free(debug);
+            g_error_free(err);
+            gtk_label_set_text(GTK_LABEL(status_label), "Error occurred while playing song.");
+            break;
+        }
+        default:
+            break;
+    }
+    return TRUE;
 }
 
 void create_ui() {
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);  
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);
 
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_container_set_border_width(GTK_CONTAINER(vbox), 20); 
+    gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);
 
-    // Download Button
     GtkWidget *download_button = gtk_button_new_with_label("Download Song");
     g_signal_connect(download_button, "clicked", G_CALLBACK(download_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), download_button, FALSE, FALSE, 0);
 
-    // Horizontal Box for Play Controls
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 
-    // Previous Button with Icon
     GtkWidget *previous_button = gtk_button_new_from_icon_name("media-skip-backward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), previous_button, TRUE, TRUE, 0);
 
-    // Play Button with Icon
     GtkWidget *play_button = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(play_button, "clicked", G_CALLBACK(play_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), play_button, TRUE, TRUE, 0);
 
-    // Next Button with Icon
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), next_button, TRUE, TRUE, 0);
 
-    // Status Label
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
@@ -239,6 +222,7 @@ void load_songs_from_directory() {
 
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
+    gst_init(&argc, &argv);
     init_list(&song_list);
     g_mutex_init(&list_mutex);
 
@@ -246,6 +230,12 @@ int main(int argc, char *argv[]) {
     gtk_window_set_title(GTK_WINDOW(main_window), "Muzio");
     gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
     g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+
+    pipeline = gst_element_factory_make("playbin", "player");
+
+    GstBus *bus = gst_element_get_bus(pipeline);
+    gst_bus_add_watch(bus, bus_call, NULL);  // Add bus watch for EOS and error handling
+    gst_object_unref(bus);
 
     create_ui();
     add_css_style();
@@ -257,5 +247,8 @@ int main(int argc, char *argv[]) {
 
     gtk_widget_show_all(main_window);
     gtk_main();
+
+    gst_element_set_state(pipeline, GST_STATE_NULL);  // Cleanup GStreamer
+    gst_object_unref(pipeline);
     return 0;
 }
