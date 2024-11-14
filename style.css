@@ -1,63 +1,67 @@
 /* Main window styling */
 window {
     padding: 20px;
-    background-color: #2E3440; /* Nord background */
-    color: #D8DEE9; /* Nord text color */
-    font-family: "Segoe UI", "Arial"; /* Common Windows font */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Optional shadow */
+    background: linear-gradient(to bottom right, #f2f5f9, #e1e8ed);  /* Soft gray gradient */
+    color: #3b3e43; /* Dark text color for contrast */
+    font-family: "Segoe UI", "Arial", sans-serif;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* Sleek top bar (header) styling */
-headerbar {
-    background-color: rgba(59, 66, 82, 0.8); /* Nord header background */
-    color: #ECEFF4; /* Light text */
-    font-size: 15px;
-    font-weight: bold;
-    padding: 8px 15px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* Styling for all buttons */
+/* Button styling */
 button {
-    padding: 10px 20px;
-    margin-top: 10px;
-    font-weight: bold;
-    background-color: #5E81AC; /* Nord blue */
-    color: #ECEFF4; /* Light text */
-    border: none; /* Remove border */
+    padding: 12px;
+    margin: 5px;
+    background-color: #00796b;  /* Teal color for buttons */
+    color: #ffffff;             /* White color for icons/text */
+    border: none;
+    border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    transition: background-color 0.3s, box-shadow 0.3s;
+    transition: background-color 0.3s, box-shadow 0.3s, transform 0.1s;
 }
 
 button:hover {
-    background-color: #81A1C1; /* Lighter Nord blue on hover */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+    background-color: #009688;  /* Lighter teal on hover */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);  /* Lift effect on hover */
 }
 
 button:active {
-    background-color: #4C566A; /* Darker Nord color on active */
+    background-color: #004d40;   /* Dark teal on active */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transform: translateY(0);    /* Reset lift effect on active */
 }
 
-/* Styling for entry (URL input field) */
+/* Button icons: making icons visible */
+button image {
+    color: #000;
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+button:hover image {
+    opacity: 0.9;  /* Slight fade effect on hover */
+}
+
+/* URL entry field styling */
 entry {
-    padding: 8px 15px;
-    font-size: 14px;
-    background-color: #3B4252; /* Nord darker background */
-    color: #ECEFF4; /* Light text */
-    border: 1px solid #5E81AC; /* Nord blue border */
+    padding: 10px 15px;
+    font-size: 15px;
+    background-color: #e1e8ed;  /* Light gray for the entry background */
+    color: #3b3e43;             /* Darker text color for readability */
+    border: 1px solid #009688;  /* Teal border */
+    border-radius: 8px;
     margin-top: 10px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 entry:focus {
-    border-color: #88C0D0; /* Focus color in Nord theme */
+    border-color: #00796b;  /* Darker teal on focus */
     outline: none;
 }
 
 /* Status label styling */
 label {
-    color: #8FBCBB; /* Nord light teal text */
+    color: #607d8b; /* Cool slate gray */
     font-size: 14px;
     font-weight: bold;
     margin-top: 15px;

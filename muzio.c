@@ -174,28 +174,39 @@ void previous_song_button(GtkWidget *widget, gpointer data) {
 }
 
 void create_ui() {
-    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
+    // URL Entry with placeholder text
     url_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);
 
+    // Download Button
     GtkWidget *download_button = gtk_button_new_with_label("Download Song");
     g_signal_connect(download_button, "clicked", G_CALLBACK(download_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), download_button, FALSE, FALSE, 0);
 
-    GtkWidget *play_button = gtk_button_new_with_label("Play Song");
-    g_signal_connect(play_button, "clicked", G_CALLBACK(play_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), play_button, FALSE, FALSE, 0);
+    // Horizontal Box for Play Controls
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 
-    GtkWidget *next_button = gtk_button_new_with_label("Next Song");
-    g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), next_button, FALSE, FALSE, 0);
-
-    GtkWidget *previous_button = gtk_button_new_with_label("Previous Song");
+    // Previous Button with Icon
+    GtkWidget *previous_button = gtk_button_new_from_icon_name("media-skip-backward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), previous_button, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), previous_button, TRUE, TRUE, 0);
 
+    // Play Button with Icon
+    GtkWidget *play_button = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(play_button, "clicked", G_CALLBACK(play_song_button), NULL);
+    gtk_box_pack_start(GTK_BOX(hbox), play_button, TRUE, TRUE, 0);
+
+    // Next Button with Icon
+    GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
+    gtk_box_pack_start(GTK_BOX(hbox), next_button, TRUE, TRUE, 0);
+
+    // Status Label
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
@@ -231,7 +242,7 @@ int main(int argc, char *argv[]) {
 
     main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(main_window), "Muzio");
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 300);
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
     g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
     create_ui();
