@@ -24,8 +24,8 @@ To build and run the application, ensure you have the following installed:
 - Navigate to the project directory.
 - Compile the application using gcc:
 
-![alt text](image.png)
-
 ```bash
 gcc -o muzio muzio.c `pkg-config --cflags --libs gtk+-3.0` -lpthread
 ./muzio
+
+![alt text](image.png)
