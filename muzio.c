@@ -174,10 +174,12 @@ void previous_song_button(GtkWidget *widget, gpointer data) {
 }
 
 void create_ui() {
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);  
+
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(vbox), 20); 
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
-    // URL Entry with placeholder text
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);

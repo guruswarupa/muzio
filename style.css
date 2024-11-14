@@ -22,13 +22,11 @@ button {
 button:hover {
     background-color: #009688;  /* Lighter teal on hover */
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-    transform: translateY(-2px);  /* Lift effect on hover */
 }
 
 button:active {
     background-color: #004d40;   /* Dark teal on active */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    transform: translateY(0);    /* Reset lift effect on active */
 }
 
 /* Button icons: making icons visible */
