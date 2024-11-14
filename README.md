@@ -18,6 +18,8 @@ To build and run the application, ensure you have the following installed:
 - `yt-dlp` for downloading songs
 - VLC for playing songs (using `cvlc`)
 
+![alt text](image.png)
+
 ## Build Instructions
 ### Clone or download the repository to your local machine.
 
@@ -28,4 +30,3 @@ To build and run the application, ensure you have the following installed:
 gcc -o muzio muzio.c `pkg-config --cflags --libs gtk+-3.0` -lpthread
 ./muzio
 
-![alt text](image.png)
