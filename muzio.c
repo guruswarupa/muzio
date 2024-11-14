@@ -22,11 +22,14 @@ typedef struct CircularDoublyLinkedList {
 GtkWidget *url_entry;
 GtkWidget *main_window;
 GtkWidget *status_label;
+GtkWidget *play_pause_button; // The play/pause button
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
 Node *current_song = NULL;
 GstElement *pipeline = NULL;
+
+gint64 current_position = 0; // Variable to store current position
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
@@ -95,18 +98,50 @@ void play_song(const char *song_name) {
     g_object_set(G_OBJECT(pipeline), "uri", file_path, NULL);
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
+
+    // Change play/pause button icon to "media-playback-pause"
+    GtkWidget *pause_icon = gtk_image_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
+    gtk_button_set_image(GTK_BUTTON(play_pause_button), pause_icon);
+
+    // Reset current_position to 0 when starting a new song
+    current_position = 0;
+
     g_free(file_path);
 }
 
-void play_song_button(GtkWidget *widget, gpointer data) {
-    if (current_song == NULL) {
-        current_song = song_list.head;
-    }
+void pause_song() {
+    if (pipeline) {
+        // Get the current playback position before pausing
+        gst_element_query_position(pipeline, GST_FORMAT_TIME, &current_position);
+        gst_element_set_state(pipeline, GST_STATE_PAUSED);
 
-    if (current_song) {
-        play_song(current_song->song_name);
+        // Change play/pause button icon to "media-playback-start"
+        GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
+        gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
+        gtk_label_set_text(GTK_LABEL(status_label), "Song Paused");
+    }
+}
+
+void resume_song() {
+    if (pipeline) {
+        gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, GST_SEEK_TYPE_SET, current_position, GST_SEEK_TYPE_NONE, 0);
+        gst_element_set_state(pipeline, GST_STATE_PLAYING);
+        
+        // Change play/pause button icon to "media-playback-pause"
+        GtkWidget *pause_icon = gtk_image_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
+        gtk_button_set_image(GTK_BUTTON(play_pause_button), pause_icon);
+        gtk_label_set_text(GTK_LABEL(status_label), "Resuming Song...");
+    }
+}
+
+void play_pause_button_toggled(GtkWidget *widget, gpointer data) {
+    GstState current_state;
+    gst_element_get_state(pipeline, &current_state, NULL, GST_CLOCK_TIME_NONE);
+
+    if (current_state == GST_STATE_PLAYING) {
+        pause_song(); // Pause the song if it's currently playing
     } else {
-        gtk_label_set_text(GTK_LABEL(status_label), "No song to play.");
+        resume_song(); // Resume the song if it's paused
     }
 }
 
@@ -116,7 +151,7 @@ void play_next_song() {
         play_song(current_song->song_name);
         gtk_label_set_text(GTK_LABEL(status_label), "Playing Next Song...");
     } else if (current_song) {
-        current_song = song_list.head; 
+        current_song = song_list.head;
         play_song(current_song->song_name);
         gtk_label_set_text(GTK_LABEL(status_label), "Playing First Song (Looping)...");
     } else {
@@ -184,9 +219,12 @@ void create_ui() {
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), previous_button, TRUE, TRUE, 0);
 
-    GtkWidget *play_button = gtk_button_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
-    g_signal_connect(play_button, "clicked", G_CALLBACK(play_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), play_button, TRUE, TRUE, 0);
+    // Play/Pause Button
+    play_pause_button = gtk_button_new();
+    GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON); // Start with play icon
+    gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
+    g_signal_connect(play_pause_button, "clicked", G_CALLBACK(play_pause_button_toggled), NULL);
+    gtk_box_pack_start(GTK_BOX(hbox), play_pause_button, TRUE, TRUE, 0);
 
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
@@ -251,4 +289,4 @@ int main(int argc, char *argv[]) {
     gst_element_set_state(pipeline, GST_STATE_NULL);  // Cleanup GStreamer
     gst_object_unref(pipeline);
     return 0;
-}
+} 
