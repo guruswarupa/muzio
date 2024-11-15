@@ -8,6 +8,28 @@
 #include <time.h>
 
 #define DEFAULT_MUSIC_DIR "/home/msgs/hdd/msgs/Music"
+#define CONFIG_FILE "config.txt"
+
+void save_music_directory(const char *dir) {
+    FILE *file = fopen(CONFIG_FILE, "w");
+    if (file) {
+        fprintf(file, "%s\n", dir);
+        fclose(file);
+    }
+}
+
+char *load_music_directory() {
+    FILE *file = fopen(CONFIG_FILE, "r");
+    if (!file) return NULL;
+
+    char *dir = (char *)malloc(256);
+    if (fgets(dir, 256, file)) {
+        // Remove newline character at the end, if present
+        dir[strcspn(dir, "\n")] = '\0';
+    }
+    fclose(file);
+    return dir;
+}
 
 typedef struct Node {
     char *song_name;
@@ -308,10 +330,10 @@ void ask_for_music_directory() {
                                                     "Select", GTK_RESPONSE_ACCEPT, NULL);
 
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-        // Get the selected directory
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
         const char *selected_dir = gtk_file_chooser_get_filename(chooser);
         music_dir = strdup(selected_dir);
+        save_music_directory(music_dir);  // Save the selected directory
         load_songs_from_directory();  // Load songs from the newly selected directory
     }
 
@@ -322,12 +344,32 @@ void change_music_directory_button(GtkWidget *widget, gpointer data) {
     ask_for_music_directory();
 }
 
+GtkWidget *directory_label;
+
+void update_directory_label() {
+    if (music_dir) {
+        gchar *label_text = g_strdup_printf("Directory: %s", music_dir);
+        gtk_label_set_text(GTK_LABEL(directory_label), label_text);
+        g_free(label_text);
+    }
+}
+
 void create_ui() {
     gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);
 
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
+
+    // Add a label to display the current music directory
+    directory_label = gtk_label_new("Directory: ");
+    gtk_box_pack_start(GTK_BOX(vbox), directory_label, FALSE, FALSE, 0);
+    update_directory_label();  // Update the label with the current directory
+
+     // Add the button to change the music directory
+    change_dir_button = gtk_button_new_with_label("Change Directory");
+    g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
 
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
@@ -367,11 +409,6 @@ void create_ui() {
     g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), shuffle_button, TRUE, TRUE, 0);
 
-    // Add the button to change the music directory
-    change_dir_button = gtk_button_new_with_label("Change Directory");
-    g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
-    gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
-
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
@@ -395,9 +432,14 @@ int main(int argc, char *argv[]) {
     gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
     g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
-    // If music directory is not set, ask for it
+    // Try loading the saved music directory
+    music_dir = load_music_directory();
+
+    // If no saved directory, ask for it
     if (!music_dir) {
         ask_for_music_directory();
+    } else {
+        load_songs_from_directory();
     }
 
     pipeline = gst_element_factory_make("playbin", "player");
@@ -408,9 +450,6 @@ int main(int argc, char *argv[]) {
 
     create_ui();
     add_css_style();
-
-    // Load songs from the selected music directory
-    load_songs_from_directory();
 
     // Enable shuffle by default
     toggle_shuffle(NULL, NULL); // This will shuffle the playlist
