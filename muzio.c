@@ -7,29 +7,7 @@
 #include <gst/gst.h>
 #include <time.h>
 
-#define DEFAULT_MUSIC_DIR "/home/msgs/hdd/msgs/Music"
 #define CONFIG_FILE "config.txt"
-
-void save_music_directory(const char *dir) {
-    FILE *file = fopen(CONFIG_FILE, "w");
-    if (file) {
-        fprintf(file, "%s\n", dir);
-        fclose(file);
-    }
-}
-
-char *load_music_directory() {
-    FILE *file = fopen(CONFIG_FILE, "r");
-    if (!file) return NULL;
-
-    char *dir = (char *)malloc(256);
-    if (fgets(dir, 256, file)) {
-        // Remove newline character at the end, if present
-        dir[strcspn(dir, "\n")] = '\0';
-    }
-    fclose(file);
-    return dir;
-}
 
 typedef struct Node {
     char *song_name;
@@ -45,7 +23,8 @@ GtkWidget *url_entry;
 GtkWidget *main_window;
 GtkWidget *status_label;
 GtkWidget *play_pause_button;
-GtkWidget *change_dir_button;  // Button to change music directory
+GtkWidget *change_dir_button;  
+GtkWidget *directory_label;
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -54,7 +33,7 @@ GstElement *pipeline = NULL;
 gint64 current_position = 0;
 gboolean is_loop_enabled = FALSE;
 gboolean is_shuffle_enabled = FALSE;
-char *music_dir = NULL;  // Store the music directory
+char *music_dir = NULL;
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
@@ -300,6 +279,27 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     }
     return TRUE;
 }
+
+void save_music_directory(const char *dir) {
+    FILE *file = fopen(CONFIG_FILE, "w");
+    if (file) {
+        fprintf(file, "%s\n", dir);
+        fclose(file);
+    }
+}
+
+char *load_music_directory() {
+    FILE *file = fopen(CONFIG_FILE, "r");
+    if (!file) return NULL;
+
+    char *dir = (char *)malloc(256);
+    if (fgets(dir, 256, file)) {
+        // Remove newline character at the end, if present
+        dir[strcspn(dir, "\n")] = '\0';
+    }
+    fclose(file);
+    return dir;
+}
     
 void load_songs_from_directory() {
     if (!music_dir) {
@@ -343,8 +343,6 @@ void ask_for_music_directory() {
 void change_music_directory_button(GtkWidget *widget, gpointer data) {
     ask_for_music_directory();
 }
-
-GtkWidget *directory_label;
 
 void update_directory_label() {
     if (music_dir) {
