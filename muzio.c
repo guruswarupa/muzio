@@ -22,14 +22,15 @@ typedef struct CircularDoublyLinkedList {
 GtkWidget *url_entry;
 GtkWidget *main_window;
 GtkWidget *status_label;
-GtkWidget *play_pause_button; // The play/pause button
+GtkWidget *play_pause_button; 
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
 Node *current_song = NULL;
 GstElement *pipeline = NULL;
-
-gint64 current_position = 0; // Variable to store current position
+gint64 current_position = 0;
+gboolean is_loop_enabled = FALSE;
+gboolean is_shuffle_enabled = FALSE; 
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
@@ -177,10 +178,94 @@ void previous_song_button(GtkWidget *widget, gpointer data) {
     play_previous_song();
 }
 
+void toggle_loop(GtkWidget *widget, gpointer data) {
+    is_loop_enabled = !is_loop_enabled; // Toggle loop state
+
+    GtkWidget *loop_icon;
+    if (is_loop_enabled) {
+        // Set an "active" loop icon
+        loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_label_set_text(GTK_LABEL(status_label), "Looping current song.");
+    } else {
+        // Set a "normal" loop icon
+        loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON);
+        gtk_label_set_text(GTK_LABEL(status_label), "Looping disabled.");
+    }
+
+    // Update the button's icon
+    gtk_button_set_image(GTK_BUTTON(widget), loop_icon);
+}
+
+// Function to shuffle the playlist
+void shuffle_playlist(CircularDoublyLinkedList *list) {
+    if (is_empty(list)) return;
+
+    g_mutex_lock(&list_mutex);
+    Node *nodes[1000]; // Adjust size as needed for your playlist
+    int count = 0;
+
+    Node *temp = list->head;
+    do {
+        nodes[count++] = temp;
+        temp = temp->next;
+    } while (temp != list->head);
+
+    srand(time(NULL)); // Seed the random generator
+
+    // Shuffle nodes array
+    for (int i = count - 1; i > 0; --i) {
+        int j = rand() % (i + 1);
+        Node *temp_node = nodes[i];
+        nodes[i] = nodes[j];
+        nodes[j] = temp_node;
+    }
+
+    // Reconnect nodes in the shuffled order
+    for (int i = 0; i < count; ++i) {
+        nodes[i]->next = nodes[(i + 1) % count];
+        nodes[i]->prev = nodes[(i - 1 + count) % count];
+    }
+
+    // Update the head of the list to the first node in the shuffled order
+    list->head = nodes[0];
+    g_mutex_unlock(&list_mutex);
+
+    // If shuffle is enabled, update the current song to the first song in the shuffled list
+    current_song = list->head;
+    play_song(current_song->song_name);
+    gtk_label_set_text(GTK_LABEL(status_label), "Shuffle enabled. Playing first song.");
+}
+
+void toggle_shuffle(GtkWidget *widget, gpointer data) {
+    is_shuffle_enabled = !is_shuffle_enabled; // Toggle shuffle state
+
+    GtkWidget *shuffle_icon;
+    if (is_shuffle_enabled) {
+        // Shuffle the playlist
+        shuffle_playlist(&song_list);
+
+        // Set an "active" shuffle icon
+        shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle-symbolic", GTK_ICON_SIZE_BUTTON);
+        gtk_label_set_text(GTK_LABEL(status_label), "Shuffle enabled.");
+    } else {
+        // Set a "normal" shuffle icon
+        shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON);
+        gtk_label_set_text(GTK_LABEL(status_label), "Shuffle disabled.");
+    }
+
+    // Update the button's icon
+    gtk_button_set_image(GTK_BUTTON(widget), shuffle_icon);
+}
+
+// Modified bus call function to handle loop logic
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_EOS:
-            play_next_song();
+            if (is_loop_enabled && current_song) {
+                play_song(current_song->song_name); // Replay the current song
+            } else {
+                play_next_song(); // Play the next song
+            }
             break;
         case GST_MESSAGE_ERROR: {
             GError *err;
@@ -230,6 +315,18 @@ void create_ui() {
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), next_button, TRUE, TRUE, 0);
 
+    GtkWidget *loop_button = gtk_button_new();
+    GtkWidget *loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON); // Loop icon
+    gtk_button_set_image(GTK_BUTTON(loop_button), loop_icon);
+    g_signal_connect(loop_button, "clicked", G_CALLBACK(toggle_loop), NULL);
+    gtk_box_pack_start(GTK_BOX(hbox), loop_button, TRUE, TRUE, 0);
+
+    GtkWidget *shuffle_button = gtk_button_new();
+    GtkWidget *shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON); // Shuffle icon
+    gtk_button_set_image(GTK_BUTTON(shuffle_button), shuffle_icon);
+    g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
+    gtk_box_pack_start(GTK_BOX(hbox), shuffle_button, TRUE, TRUE, 0);
+
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
@@ -278,6 +375,9 @@ int main(int argc, char *argv[]) {
     create_ui();
     add_css_style();
     load_songs_from_directory();
+
+    // Enable shuffle by default
+    toggle_shuffle(NULL, NULL); // This will shuffle the playlist
 
     if (!is_empty(&song_list)) {
         current_song = song_list.head;
