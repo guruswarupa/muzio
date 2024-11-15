@@ -7,7 +7,7 @@
 #include <gst/gst.h>
 #include <time.h>
 
-#define MUSIC_DIR "/home/msgs/hdd/msgs/Music"
+#define DEFAULT_MUSIC_DIR "/home/msgs/hdd/msgs/Music"
 
 typedef struct Node {
     char *song_name;
@@ -22,7 +22,8 @@ typedef struct CircularDoublyLinkedList {
 GtkWidget *url_entry;
 GtkWidget *main_window;
 GtkWidget *status_label;
-GtkWidget *play_pause_button; 
+GtkWidget *play_pause_button;
+GtkWidget *change_dir_button;  // Button to change music directory
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -30,7 +31,8 @@ Node *current_song = NULL;
 GstElement *pipeline = NULL;
 gint64 current_position = 0;
 gboolean is_loop_enabled = FALSE;
-gboolean is_shuffle_enabled = FALSE; 
+gboolean is_shuffle_enabled = FALSE;
+char *music_dir = NULL;  // Store the music directory
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
@@ -62,7 +64,7 @@ void add_song(CircularDoublyLinkedList *list, const char *song_name) {
 void *download_song_thread(void *data) {
     const char *url = (const char *)data;
     char command[512];
-    snprintf(command, sizeof(command), "yt-dlp -x --audio-format mp3 -f bestaudio --embed-thumbnail --no-warnings --no-check-certificate --hls-prefer-native \"%s\" -o \"%s/%(title)s.%%(ext)s\"", url, MUSIC_DIR);
+    snprintf(command, sizeof(command), "yt-dlp -x --audio-format mp3 -f bestaudio --embed-thumbnail --no-warnings --no-check-certificate --hls-prefer-native \"%s\" -o \"%s/%(title)s.%%(ext)s\"", url, music_dir);
     system(command);
 
     gtk_label_set_text(GTK_LABEL(status_label), "Download Complete");
@@ -95,7 +97,7 @@ void stop_current_song() {
 void play_song(const char *song_name) {
     stop_current_song();
 
-    gchar *file_path = g_strdup_printf("file://%s/%s", MUSIC_DIR, song_name);
+    gchar *file_path = g_strdup_printf("file://%s/%s", music_dir, song_name);
     g_object_set(G_OBJECT(pipeline), "uri", file_path, NULL);
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
@@ -241,19 +243,14 @@ void toggle_shuffle(GtkWidget *widget, gpointer data) {
 
     GtkWidget *shuffle_icon;
     if (is_shuffle_enabled) {
-        // Shuffle the playlist
         shuffle_playlist(&song_list);
-
-        // Set an "active" shuffle icon
         shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle-symbolic", GTK_ICON_SIZE_BUTTON);
-        gtk_label_set_text(GTK_LABEL(status_label), "Shuffle enabled.");
+        gtk_label_set_text(GTK_LABEL(status_label), "Shuffling playlist.");
     } else {
-        // Set a "normal" shuffle icon
         shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON);
         gtk_label_set_text(GTK_LABEL(status_label), "Shuffle disabled.");
     }
 
-    // Update the button's icon
     gtk_button_set_image(GTK_BUTTON(widget), shuffle_icon);
 }
 
@@ -280,6 +277,49 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
             break;
     }
     return TRUE;
+}
+    
+void load_songs_from_directory() {
+    if (!music_dir) {
+        gtk_label_set_text(GTK_LABEL(status_label), "No music directory selected.");
+        return;
+    }
+
+    struct dirent *entry;
+    DIR *dir = opendir(music_dir);
+    if (dir == NULL) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Failed to open directory.");
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strstr(entry->d_name, ".mp3") != NULL) {
+            add_song(&song_list, entry->d_name);
+        }
+    }
+
+    closedir(dir);
+}
+
+void ask_for_music_directory() {
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Select Music Directory", GTK_WINDOW(main_window),
+                                                    GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
+                                                    "Cancel", GTK_RESPONSE_CANCEL,
+                                                    "Select", GTK_RESPONSE_ACCEPT, NULL);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        // Get the selected directory
+        GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
+        const char *selected_dir = gtk_file_chooser_get_filename(chooser);
+        music_dir = strdup(selected_dir);
+        load_songs_from_directory();  // Load songs from the newly selected directory
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+void change_music_directory_button(GtkWidget *widget, gpointer data) {
+    ask_for_music_directory();
 }
 
 void create_ui() {
@@ -327,6 +367,11 @@ void create_ui() {
     g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), shuffle_button, TRUE, TRUE, 0);
 
+    // Add the button to change the music directory
+    change_dir_button = gtk_button_new_with_label("Change Directory");
+    g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
+
     status_label = gtk_label_new("");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 }
@@ -337,22 +382,6 @@ void add_css_style() {
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(css_provider),
         GTK_STYLE_PROVIDER_PRIORITY_USER);
-}
-
-void load_songs_from_directory() {
-    DIR *dir;
-    struct dirent *ent;
-
-    if ((dir = opendir(MUSIC_DIR)) != NULL) {
-        while ((ent = readdir(dir)) != NULL) {
-            if (strstr(ent->d_name, ".mp3")) {
-                add_song(&song_list, ent->d_name);
-            }
-        }
-        closedir(dir);
-    } else {
-        gtk_label_set_text(GTK_LABEL(status_label), "Error opening music directory.");
-    }
 }
 
 int main(int argc, char *argv[]) {
@@ -366,6 +395,11 @@ int main(int argc, char *argv[]) {
     gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
     g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
+    // If music directory is not set, ask for it
+    if (!music_dir) {
+        ask_for_music_directory();
+    }
+
     pipeline = gst_element_factory_make("playbin", "player");
 
     GstBus *bus = gst_element_get_bus(pipeline);
@@ -374,6 +408,8 @@ int main(int argc, char *argv[]) {
 
     create_ui();
     add_css_style();
+
+    // Load songs from the selected music directory
     load_songs_from_directory();
 
     // Enable shuffle by default
