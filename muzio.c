@@ -280,6 +280,42 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
+void import_songs_from_file(const char *file_path) {
+    FILE *file = fopen(file_path, "r");
+    if (!file) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Failed to open file.");
+        return;
+    }
+
+    char line[512];
+    while (fgets(line, sizeof(line), file)) {
+        // Remove newline character from the end
+        line[strcspn(line, "\n")] = '\0';
+
+        // Start a new download thread for each song URL
+        char *url_copy = strdup(line);
+        download_thread = g_thread_new("download_thread", download_song_thread, url_copy);
+    }
+
+    fclose(file);
+    gtk_label_set_text(GTK_LABEL(status_label), "All songs imported and downloads started.");
+}
+
+void import_songs_button(GtkWidget *widget, gpointer data) {
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Select Song List File", GTK_WINDOW(main_window),
+                                                    GTK_FILE_CHOOSER_ACTION_OPEN,
+                                                    "Cancel", GTK_RESPONSE_CANCEL,
+                                                    "Select", GTK_RESPONSE_ACCEPT, NULL);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
+        const char *selected_file = gtk_file_chooser_get_filename(chooser);
+        import_songs_from_file(selected_file);  // Import songs from the selected file
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
 void save_music_directory(const char *dir) {
     FILE *file = fopen(CONFIG_FILE, "w");
     if (file) {
@@ -359,15 +395,17 @@ void create_ui() {
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
-    // Add a label to display the current music directory
     directory_label = gtk_label_new("Directory: ");
     gtk_box_pack_start(GTK_BOX(vbox), directory_label, FALSE, FALSE, 0);
-    update_directory_label();  // Update the label with the current directory
+    update_directory_label(); 
 
-     // Add the button to change the music directory
     change_dir_button = gtk_button_new_with_label("Change Directory");
     g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
+
+    GtkWidget *import_button = gtk_button_new_with_label("Import Songs from File");
+    g_signal_connect(import_button, "clicked", G_CALLBACK(import_songs_button), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), import_button, FALSE, FALSE, 0);
 
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
@@ -384,7 +422,6 @@ void create_ui() {
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(hbox), previous_button, TRUE, TRUE, 0);
 
-    // Play/Pause Button
     play_pause_button = gtk_button_new();
     GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON); // Start with play icon
     gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
