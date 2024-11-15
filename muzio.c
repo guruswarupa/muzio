@@ -8,6 +8,7 @@
 #include <time.h>
 
 #define CONFIG_FILE "config.txt"
+void open_settings_window(GtkWidget *widget, gpointer data);
 
 typedef struct Node {
     char *song_name;
@@ -21,10 +22,12 @@ typedef struct CircularDoublyLinkedList {
 
 GtkWidget *url_entry;
 GtkWidget *main_window;
+GtkWidget *settings_window;
 GtkWidget *status_label;
 GtkWidget *play_pause_button;
 GtkWidget *change_dir_button;  
 GtkWidget *directory_label;
+GtkWidget *settings_button;
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -388,25 +391,27 @@ void update_directory_label() {
     }
 }
 
-void create_ui() {
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);
-
+void create_settings_ui() {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
-    gtk_container_add(GTK_CONTAINER(main_window), vbox);
+    gtk_container_add(GTK_CONTAINER(settings_window), vbox);
 
+    // Directory label
     directory_label = gtk_label_new("Directory: ");
     gtk_box_pack_start(GTK_BOX(vbox), directory_label, FALSE, FALSE, 0);
-    update_directory_label(); 
+    update_directory_label();
 
+    // Change directory button
     change_dir_button = gtk_button_new_with_label("Change Directory");
     g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
 
+    // Import songs button
     GtkWidget *import_button = gtk_button_new_with_label("Import Songs from File");
     g_signal_connect(import_button, "clicked", G_CALLBACK(import_songs_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), import_button, FALSE, FALSE, 0);
 
+    // URL entry and download button
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);
@@ -414,38 +419,76 @@ void create_ui() {
     GtkWidget *download_button = gtk_button_new_with_label("Download Song");
     g_signal_connect(download_button, "clicked", G_CALLBACK(download_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), download_button, FALSE, FALSE, 0);
+}
 
-    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-    gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
+void open_settings_window(GtkWidget *widget, gpointer data) {
+    if (!settings_window) {
+        // Create the settings window only once
+        settings_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+        gtk_window_set_title(GTK_WINDOW(settings_window), "Settings");
+        g_signal_connect(settings_window, "destroy", G_CALLBACK(gtk_widget_destroy), NULL);
 
+        create_settings_ui();  // Set up the UI for the settings window
+    }
+
+    gtk_widget_show_all(settings_window);  // Show the settings window
+}
+
+void create_ui() {
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 400, 300);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
+    gtk_container_add(GTK_CONTAINER(main_window), vbox);
+
+    // Create an hbox for the media control buttons
+    GtkWidget *controls_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), controls_hbox, FALSE, FALSE, 0);
+
+    // Previous button
     GtkWidget *previous_button = gtk_button_new_from_icon_name("media-skip-backward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), previous_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(controls_hbox), previous_button, TRUE, TRUE, 0);
 
+    // Play/Pause button
     play_pause_button = gtk_button_new();
     GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON); // Start with play icon
     gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
     g_signal_connect(play_pause_button, "clicked", G_CALLBACK(play_pause_button_toggled), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), play_pause_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(controls_hbox), play_pause_button, TRUE, TRUE, 0);
 
+    // Next button
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), next_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(controls_hbox), next_button, TRUE, TRUE, 0);
 
+    // Status label at the bottom
+    status_label = gtk_label_new("Playing Song...");
+    gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
+
+    // Create an hbox for the loop and shuffle buttons
+    GtkWidget *extra_controls_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), extra_controls_hbox, FALSE, FALSE, 0);
+
+    // Loop button
     GtkWidget *loop_button = gtk_button_new();
     GtkWidget *loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON); // Loop icon
     gtk_button_set_image(GTK_BUTTON(loop_button), loop_icon);
     g_signal_connect(loop_button, "clicked", G_CALLBACK(toggle_loop), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), loop_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(extra_controls_hbox), loop_button, TRUE, TRUE, 0);
 
+    // Shuffle button
     GtkWidget *shuffle_button = gtk_button_new();
     GtkWidget *shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON); // Shuffle icon
     gtk_button_set_image(GTK_BUTTON(shuffle_button), shuffle_icon);
     g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
-    gtk_box_pack_start(GTK_BOX(hbox), shuffle_button, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(extra_controls_hbox), shuffle_button, TRUE, TRUE, 0);
 
-    status_label = gtk_label_new("");
-    gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
+    // Settings button with settings icon
+    GtkWidget *settings_button = gtk_button_new_from_icon_name("preferences-system", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(settings_button, "clicked", G_CALLBACK(open_settings_window), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), settings_button, FALSE, FALSE, 0);
+
 }
 
 void add_css_style() {
@@ -483,8 +526,8 @@ int main(int argc, char *argv[]) {
     gst_bus_add_watch(bus, bus_call, NULL);  // Add bus watch for EOS and error handling
     gst_object_unref(bus);
 
-    create_ui();
-    add_css_style();
+    create_ui();  // Create the main UI
+    add_css_style();  // Apply CSS style
 
     // Enable shuffle by default
     toggle_shuffle(NULL, NULL); // This will shuffle the playlist
