@@ -107,11 +107,9 @@ void play_song(const char *song_name) {
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     gtk_label_set_text(GTK_LABEL(status_label), "Playing Song...");
 
-    // Change play/pause button icon to "media-playback-pause"
     GtkWidget *pause_icon = gtk_image_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_image(GTK_BUTTON(play_pause_button), pause_icon);
 
-    // Reset current_position to 0 when starting a new song
     current_position = 0;
 
     g_free(file_path);
@@ -119,11 +117,9 @@ void play_song(const char *song_name) {
 
 void pause_song() {
     if (pipeline) {
-        // Get the current playback position before pausing
         gst_element_query_position(pipeline, GST_FORMAT_TIME, &current_position);
         gst_element_set_state(pipeline, GST_STATE_PAUSED);
 
-        // Change play/pause button icon to "media-playback-start"
         GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
         gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
         gtk_label_set_text(GTK_LABEL(status_label), "Song Paused");
@@ -135,7 +131,6 @@ void resume_song() {
         gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, GST_SEEK_TYPE_SET, current_position, GST_SEEK_TYPE_NONE, 0);
         gst_element_set_state(pipeline, GST_STATE_PLAYING);
         
-        // Change play/pause button icon to "media-playback-pause"
         GtkWidget *pause_icon = gtk_image_new_from_icon_name("media-playback-pause", GTK_ICON_SIZE_BUTTON);
         gtk_button_set_image(GTK_BUTTON(play_pause_button), pause_icon);
         gtk_label_set_text(GTK_LABEL(status_label), "Resuming Song...");
@@ -147,9 +142,9 @@ void play_pause_button_toggled(GtkWidget *widget, gpointer data) {
     gst_element_get_state(pipeline, &current_state, NULL, GST_CLOCK_TIME_NONE);
 
     if (current_state == GST_STATE_PLAYING) {
-        pause_song(); // Pause the song if it's currently playing
+        pause_song(); 
     } else {
-        resume_song(); // Resume the song if it's paused
+        resume_song(); 
     }
 }
 
@@ -186,27 +181,24 @@ void previous_song_button(GtkWidget *widget, gpointer data) {
 }
 
 void toggle_loop(GtkWidget *widget, gpointer data) {
-    is_loop_enabled = !is_loop_enabled; // Toggle loop state
+    is_loop_enabled = !is_loop_enabled; 
 
     GtkWidget *loop_icon;
     if (is_loop_enabled) {
-        // Set an "active" loop icon
         loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat-symbolic", GTK_ICON_SIZE_BUTTON);
         gtk_label_set_text(GTK_LABEL(status_label), "Looping current song.");
     } else {
-        // Set a "normal" loop icon
         loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON);
         gtk_label_set_text(GTK_LABEL(status_label), "Looping disabled.");
     }
 
 }
 
-// Function to shuffle the playlist
 void shuffle_playlist(CircularDoublyLinkedList *list) {
     if (is_empty(list)) return;
 
     g_mutex_lock(&list_mutex);
-    Node *nodes[1000]; // Adjust size as needed for your playlist
+    Node *nodes[1000];
     int count = 0;
 
     Node *temp = list->head;
@@ -215,9 +207,8 @@ void shuffle_playlist(CircularDoublyLinkedList *list) {
         temp = temp->next;
     } while (temp != list->head);
 
-    srand(time(NULL)); // Seed the random generator
+    srand(time(NULL));
 
-    // Shuffle nodes array
     for (int i = count - 1; i > 0; --i) {
         int j = rand() % (i + 1);
         Node *temp_node = nodes[i];
@@ -225,24 +216,21 @@ void shuffle_playlist(CircularDoublyLinkedList *list) {
         nodes[j] = temp_node;
     }
 
-    // Reconnect nodes in the shuffled order
     for (int i = 0; i < count; ++i) {
         nodes[i]->next = nodes[(i + 1) % count];
         nodes[i]->prev = nodes[(i - 1 + count) % count];
     }
 
-    // Update the head of the list to the first node in the shuffled order
     list->head = nodes[0];
     g_mutex_unlock(&list_mutex);
 
-    // If shuffle is enabled, update the current song to the first song in the shuffled list
     current_song = list->head;
     play_song(current_song->song_name);
     gtk_label_set_text(GTK_LABEL(status_label), "Shuffle enabled. Playing first song.");
 }
 
 void toggle_shuffle(GtkWidget *widget, gpointer data) {
-    is_shuffle_enabled = !is_shuffle_enabled; // Toggle shuffle state
+    is_shuffle_enabled = !is_shuffle_enabled;
 
     GtkWidget *shuffle_icon;
     if (is_shuffle_enabled) {
@@ -257,19 +245,18 @@ void toggle_shuffle(GtkWidget *widget, gpointer data) {
 
 void on_volume_changed(GtkRange *range, gpointer data) {
     if (pipeline) {
-        gdouble value = gtk_range_get_value(range); // Get slider value (0.0 to 1.0)
+        gdouble value = gtk_range_get_value(range);
         g_object_set(pipeline, "volume", value, NULL);
     }
 }
 
-// Modified bus call function to handle loop logic
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_EOS:
             if (is_loop_enabled && current_song) {
-                play_song(current_song->song_name); // Replay the current song
+                play_song(current_song->song_name);
             } else {
-                play_next_song(); // Play the next song
+                play_next_song();
             }
             break;
         case GST_MESSAGE_ERROR: {
@@ -301,7 +288,6 @@ char *load_music_directory() {
 
     char *dir = (char *)malloc(256);
     if (fgets(dir, 256, file)) {
-        // Remove newline character at the end, if present
         dir[strcspn(dir, "\n")] = '\0';
     }
     fclose(file);
@@ -340,8 +326,8 @@ void ask_for_music_directory() {
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
         const char *selected_dir = gtk_file_chooser_get_filename(chooser);
         music_dir = strdup(selected_dir);
-        save_music_directory(music_dir);  // Save the selected directory
-        load_songs_from_directory();  // Load songs from the newly selected directory
+        save_music_directory(music_dir); 
+        load_songs_from_directory();
     }
 
     gtk_widget_destroy(dialog);
@@ -364,17 +350,15 @@ void create_settings_ui() {
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(settings_window), vbox);
 
-    // Directory label
     directory_label = gtk_label_new("Directory: ");
     gtk_box_pack_start(GTK_BOX(vbox), directory_label, FALSE, FALSE, 0);
     update_directory_label();
 
-    // Change directory button
+
     change_dir_button = gtk_button_new_with_label("Change Directory");
     g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
 
-    // URL entry and download button
     url_entry = gtk_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "Enter the song URL here");
     gtk_box_pack_start(GTK_BOX(vbox), url_entry, FALSE, FALSE, 0);
@@ -386,14 +370,13 @@ void create_settings_ui() {
 
 void open_settings_window(GtkWidget *widget, gpointer data) {
     if (!settings_window) {
-        // Create the settings window only once
         settings_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_title(GTK_WINDOW(settings_window), "Settings");
         g_signal_connect(settings_window, "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL);
-        create_settings_ui();  // Set up the UI for the settings window
+        create_settings_ui();
     }
 
-    gtk_widget_show_all(settings_window);  // Show the settings window
+    gtk_widget_show_all(settings_window);
 }
 
 void create_ui() {
@@ -403,59 +386,49 @@ void create_ui() {
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
-    // Create an hbox for the media control buttons
     GtkWidget *controls_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_pack_start(GTK_BOX(vbox), controls_hbox, FALSE, FALSE, 0);
 
-    // Previous button
     GtkWidget *previous_button = gtk_button_new_from_icon_name("media-skip-backward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(previous_button, "clicked", G_CALLBACK(previous_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), previous_button, TRUE, TRUE, 0);
 
-    // Play/Pause button
     play_pause_button = gtk_button_new();
-    GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON); // Start with play icon
+    GtkWidget *play_icon = gtk_image_new_from_icon_name("media-playback-start", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_image(GTK_BUTTON(play_pause_button), play_icon);
     g_signal_connect(play_pause_button, "clicked", G_CALLBACK(play_pause_button_toggled), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), play_pause_button, TRUE, TRUE, 0);
 
-    // Next button
     GtkWidget *next_button = gtk_button_new_from_icon_name("media-skip-forward", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(next_button, "clicked", G_CALLBACK(next_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(controls_hbox), next_button, TRUE, TRUE, 0);
 
-    // Status label at the bottom
     status_label = gtk_label_new("Playing Song...");
     gtk_box_pack_start(GTK_BOX(vbox), status_label, FALSE, FALSE, 0);
 
-    // Create an hbox for the loop and shuffle buttons
     GtkWidget *extra_controls_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_pack_start(GTK_BOX(vbox), extra_controls_hbox, FALSE, FALSE, 0);
 
-    // Loop button
     GtkWidget *loop_button = gtk_button_new();
-    GtkWidget *loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON); // Loop icon
+    GtkWidget *loop_icon = gtk_image_new_from_icon_name("media-playlist-repeat", GTK_ICON_SIZE_BUTTON); 
     gtk_button_set_image(GTK_BUTTON(loop_button), loop_icon);
     g_signal_connect(loop_button, "clicked", G_CALLBACK(toggle_loop), NULL);
     gtk_box_pack_start(GTK_BOX(extra_controls_hbox), loop_button, TRUE, TRUE, 0);
 
-    // Shuffle button
     GtkWidget *shuffle_button = gtk_button_new();
-    GtkWidget *shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON); // Shuffle icon
+    GtkWidget *shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON);
     gtk_button_set_image(GTK_BUTTON(shuffle_button), shuffle_icon);
     g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
     gtk_box_pack_start(GTK_BOX(extra_controls_hbox), shuffle_button, TRUE, TRUE, 0);
 
-    // Volume slider
     GtkWidget *volume_label = gtk_label_new("Volume:");
     gtk_box_pack_start(GTK_BOX(vbox), volume_label, FALSE, FALSE, 0);
 
-    volume_slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01); // Range 0.0 to 1.0
-    gtk_range_set_value(GTK_RANGE(volume_slider), 1.0); // Default to 50% volume
+    volume_slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01); 
+    gtk_range_set_value(GTK_RANGE(volume_slider), 1.0); 
     g_signal_connect(volume_slider, "value-changed", G_CALLBACK(on_volume_changed), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), volume_slider, FALSE, FALSE, 0);
 
-    // Settings button with settings icon
     GtkWidget *settings_button = gtk_button_new_from_icon_name("preferences-system", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(settings_button, "clicked", G_CALLBACK(open_settings_window), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), settings_button, FALSE, FALSE, 0);
@@ -481,10 +454,8 @@ int main(int argc, char *argv[]) {
     gtk_window_set_default_size(GTK_WINDOW(main_window), 300, 200);
     g_signal_connect(main_window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
-    // Try loading the saved music directory
     music_dir = load_music_directory();
 
-    // If no saved directory, ask for it
     if (!music_dir) {
         ask_for_music_directory();
     } else {
@@ -494,24 +465,24 @@ int main(int argc, char *argv[]) {
     pipeline = gst_element_factory_make("playbin", "player");
 
     GstBus *bus = gst_element_get_bus(pipeline);
-    gst_bus_add_watch(bus, bus_call, NULL);  // Add bus watch for EOS and error handling
+    gst_bus_add_watch(bus, bus_call, NULL);  
     gst_object_unref(bus);
 
-    create_ui();  // Create the main UI
-    add_css_style();  // Apply CSS style
+    create_ui();
+    add_css_style();
 
-    // Enable shuffle by default
-    toggle_shuffle(NULL, NULL); // This will shuffle the playlist
+  
+    toggle_shuffle(NULL, NULL);
 
     if (!is_empty(&song_list)) {
         current_song = song_list.head;
-        play_song(current_song->song_name);  // Automatically play the first song
+        play_song(current_song->song_name);
     }
 
     gtk_widget_show_all(main_window);
     gtk_main();
 
-    gst_element_set_state(pipeline, GST_STATE_NULL);  // Cleanup GStreamer
+    gst_element_set_state(pipeline, GST_STATE_NULL);
     gst_object_unref(pipeline);
     return 0;
 }
