@@ -18,7 +18,8 @@ To build and run the application, ensure you have the following installed:
 - `yt-dlp` for downloading songs
 - gstreamer for playing songs
 
-![Working app image](image.png)
+![main window](mainwindow.png)
+![setting window](settingwindow.png)
 
 ## Build Instructions
 ### Clone or download the repository to your local machine.
