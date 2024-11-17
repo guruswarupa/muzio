@@ -8,6 +8,7 @@
 #include <time.h>
 
 #define CONFIG_FILE "config.txt"
+#define PLAYLISTS_DIR "playlists"
 
 typedef struct Node {
     char *song_name;
@@ -33,6 +34,8 @@ GtkWidget *seek_scale;
 GtkWidget *current_time_label;
 GtkWidget *total_time_label;
 GstElement *pipeline;
+GtkComboBoxText *playlist_combo_box;
+GtkWidget *add_to_playlist_button;
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -66,6 +69,12 @@ static void update_seek_bar_position_thread();
 static void start_seek_bar_update_thread();
 void on_seek_changed(GtkRange *range, gpointer data);
 void reset_seek_scale();
+void create_playlist(const char *playlist_name);
+void add_song_to_playlist(const char *song_name, const char *playlist_name);
+void load_playlists();
+void on_add_to_playlist_button_clicked(GtkWidget *widget, gpointer data);
+void on_create_playlist_button_clicked(GtkWidget *widget, gpointer data);
+void on_play_playlist_button_clicked(GtkWidget *widget, gpointer data);
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data);
 void save_music_directory(const char *dir);
 char *load_music_directory();
@@ -346,6 +355,153 @@ void reset_seek_scale() {
     gtk_range_set_value(GTK_RANGE(seek_scale), 0.0);  
 }
 
+void create_playlist(const char *playlist_name) {
+    if (playlist_name == NULL || playlist_name[0] == '\0') {
+        gtk_label_set_text(GTK_LABEL(status_label), "Error: Invalid playlist name.");
+        return;
+    }
+
+    char playlist_file[512];
+    snprintf(playlist_file, sizeof(playlist_file), "%s/%s.txt", PLAYLISTS_DIR, playlist_name);
+
+    FILE *file = fopen(playlist_file, "w");
+    if (file) {
+        fclose(file);
+
+        if (playlist_combo_box != NULL) {
+            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(playlist_combo_box), playlist_name);
+        } else {
+            gtk_label_set_text(GTK_LABEL(status_label), "Error: Playlist combo box not initialized.");
+        }
+
+        char message[256];
+        snprintf(message, sizeof(message), "Playlist '%s' created successfully.", playlist_name);
+        gtk_label_set_text(GTK_LABEL(status_label), message);
+    } else {
+        char message[256];
+        snprintf(message, sizeof(message), "Error creating playlist file for: %s", playlist_name);
+        gtk_label_set_text(GTK_LABEL(status_label), message);
+    }
+}
+
+void add_song_to_playlist(const char *song_name, const char *playlist_name) {
+    char playlist_file[512];
+    snprintf(playlist_file, sizeof(playlist_file), "%s/%s.txt", PLAYLISTS_DIR, playlist_name);
+    
+    FILE *file = fopen(playlist_file, "a");
+    if (file) {
+        fprintf(file, "%s\n", song_name); 
+        fclose(file);
+        gtk_label_set_text(GTK_LABEL(status_label), "Song added to playlist.");
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "Error adding song to playlist.");
+    }
+}
+
+void load_playlists() {
+    DIR *dir = opendir(PLAYLISTS_DIR);
+    if (dir == NULL) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Failed to open playlists directory.");
+        return;
+    }
+
+    struct dirent *entry;
+    gboolean first_playlist_set = FALSE;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strstr(entry->d_name, ".txt") != NULL) {
+            char playlist_name[256];
+            strncpy(playlist_name, entry->d_name, sizeof(playlist_name));
+            playlist_name[strlen(playlist_name) - 4] = '\0';
+            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(playlist_combo_box), playlist_name);
+            if (!first_playlist_set) {
+                gtk_combo_box_set_active(GTK_COMBO_BOX(playlist_combo_box), 0);
+                first_playlist_set = TRUE;
+            }
+        }
+    }
+    closedir(dir);
+}
+
+void on_add_to_playlist_button_clicked(GtkWidget *widget, gpointer data) {
+    const char *song_name = current_song->song_name;  
+    const char *playlist_name = gtk_combo_box_text_get_active_text(playlist_combo_box);  
+
+    if (song_name && playlist_name) {
+        add_song_to_playlist(song_name, playlist_name);
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "No song or playlist selected.");
+    }
+}
+
+void on_create_playlist_button_clicked(GtkWidget *widget, gpointer data) {
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Create Playlist", GTK_WINDOW(main_window),
+                                                   GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                   "Create", GTK_RESPONSE_ACCEPT,
+                                                   "Cancel", GTK_RESPONSE_REJECT,
+                                                   NULL);
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Enter Playlist Name");
+    gtk_box_pack_start(GTK_BOX(content_area), entry, TRUE, TRUE, 0);
+    
+    gtk_widget_show_all(dialog);
+    
+    gint result = gtk_dialog_run(GTK_DIALOG(dialog));
+    
+    if (result == GTK_RESPONSE_ACCEPT) {
+        const char *playlist_name = gtk_entry_get_text(GTK_ENTRY(entry));
+        create_playlist(playlist_name);
+    }
+    
+    gtk_widget_destroy(dialog); 
+}
+
+void on_play_playlist_button_clicked(GtkWidget *widget, gpointer data) {
+    const char *playlist_name = gtk_combo_box_text_get_active_text(playlist_combo_box); 
+    if (playlist_name == NULL) {
+        gtk_label_set_text(GTK_LABEL(status_label), "No playlist selected.");
+        return;
+    }
+
+    char playlist_file[512];
+    snprintf(playlist_file, sizeof(playlist_file), "%s/%s.txt", PLAYLISTS_DIR, playlist_name);
+
+    FILE *file = fopen(playlist_file, "r");
+    if (!file) {
+        gtk_label_set_text(GTK_LABEL(status_label), "Error opening playlist file.");
+        return;
+    }
+
+    if (!is_empty(&song_list)) {
+        Node *temp = song_list.head;
+        do {
+            Node *next = temp->next;
+            free(temp->song_name);
+            free(temp);
+            temp = next;
+        } while (temp != song_list.head);
+        init_list(&song_list);
+    }
+
+    char song_path[512];
+    while (fgets(song_path, sizeof(song_path), file)) {
+        song_path[strcspn(song_path, "\n")] = '\0'; 
+        if (strlen(song_path) > 0) {
+            add_song(&song_list, song_path);
+        }
+    }
+    fclose(file);
+
+    if (!is_empty(&song_list)) {
+        current_song = song_list.head;
+        play_song(current_song->song_name);
+    } else {
+        gtk_label_set_text(GTK_LABEL(status_label), "Playlist is empty.");
+    }
+}
+
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_EOS:
@@ -450,7 +606,6 @@ void create_settings_ui() {
     gtk_box_pack_start(GTK_BOX(vbox), directory_label, FALSE, FALSE, 0);
     update_directory_label();
 
-
     change_dir_button = gtk_button_new_with_label("Change Directory");
     g_signal_connect(change_dir_button, "clicked", G_CALLBACK(change_music_directory_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), change_dir_button, FALSE, FALSE, 0);
@@ -462,6 +617,10 @@ void create_settings_ui() {
     GtkWidget *download_button = gtk_button_new_with_label("Download Song");
     g_signal_connect(download_button, "clicked", G_CALLBACK(download_song_button), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), download_button, FALSE, FALSE, 0);
+
+    GtkWidget *create_playlist_button = gtk_button_new_with_label("Create New Playlist");
+    g_signal_connect(create_playlist_button, "clicked", G_CALLBACK(on_create_playlist_button_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), create_playlist_button, FALSE, FALSE, 0);
 }
 
 void open_settings_window(GtkWidget *widget, gpointer data) {
@@ -536,6 +695,19 @@ void create_ui() {
     gtk_range_set_value(GTK_RANGE(volume_slider), 100.0);
     g_signal_connect(volume_slider, "value-changed", G_CALLBACK(on_volume_changed), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), volume_slider, FALSE, FALSE, 0);
+
+    playlist_combo_box = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
+    gtk_box_pack_start(GTK_BOX(vbox), GTK_WIDGET(playlist_combo_box), FALSE, FALSE, 0);
+
+    add_to_playlist_button = gtk_button_new_with_label("Add to Playlist");
+    g_signal_connect(add_to_playlist_button, "clicked", G_CALLBACK(on_add_to_playlist_button_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), add_to_playlist_button, FALSE, FALSE, 0);
+
+    GtkWidget *play_playlist_button = gtk_button_new_with_label("Play Playlist");
+    g_signal_connect(play_playlist_button, "clicked", G_CALLBACK(on_play_playlist_button_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), play_playlist_button, FALSE, FALSE, 5);
+
+    load_playlists();
 
     GtkWidget *settings_button = gtk_button_new_from_icon_name("preferences-system", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(settings_button, "clicked", G_CALLBACK(open_settings_window), NULL);
