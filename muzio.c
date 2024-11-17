@@ -28,6 +28,7 @@ GtkWidget *change_dir_button;
 GtkWidget *directory_label;
 GtkWidget *settings_button;
 GtkWidget *volume_slider;
+GtkWidget *volume_percentage_label;
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -37,6 +38,11 @@ gint64 current_position = 0;
 gboolean is_loop_enabled = FALSE;
 gboolean is_shuffle_enabled = FALSE;
 char *music_dir = NULL;
+GtkWidget *seek_scale;
+GtkWidget *current_time_label;
+GtkWidget *total_time_label;
+gboolean pipeline_is_playing = FALSE;
+GstElement *pipeline;
 
 void init_list(CircularDoublyLinkedList *list);
 int is_empty(CircularDoublyLinkedList *list);
@@ -56,6 +62,9 @@ void toggle_loop(GtkWidget *widget, gpointer data);
 void shuffle_playlist(CircularDoublyLinkedList *list);
 void toggle_shuffle(GtkWidget *widget, gpointer data);
 void on_volume_changed(GtkRange *range, gpointer data);
+void on_seek_changed(GtkRange *range, gpointer data);
+static void start_seek_bar_update_thread();
+void reset_seek_scale();
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data);
 void save_music_directory(const char *dir);
 char *load_music_directory();
@@ -78,9 +87,10 @@ int is_empty(CircularDoublyLinkedList *list) {
 }
 
 void add_song(CircularDoublyLinkedList *list, const char *song_name) {
-    g_mutex_lock(&list_mutex);
     Node *new_node = (Node *)malloc(sizeof(Node));
     new_node->song_name = strdup(song_name);
+
+    g_mutex_lock(&list_mutex); 
 
     if (is_empty(list)) {
         new_node->next = new_node;
@@ -93,7 +103,8 @@ void add_song(CircularDoublyLinkedList *list, const char *song_name) {
         new_node->next = list->head;
         list->head->prev = new_node;
     }
-    g_mutex_unlock(&list_mutex);
+
+    g_mutex_unlock(&list_mutex); 
 }
 
 void *download_song_thread(void *data) {
@@ -106,7 +117,7 @@ void *download_song_thread(void *data) {
     char *song_name = strrchr(url, '/') + 1;
     add_song(&song_list, song_name);
 
-    free((void *)data);
+    free((void *)data); 
     return NULL;
 }
 
@@ -117,7 +128,7 @@ void download_song_button(GtkWidget *widget, gpointer data) {
         return;
     }
 
-    char *url_copy = strdup(url);
+    char *url_copy = g_strdup(url); 
     download_thread = g_thread_new("download_thread", download_song_thread, url_copy);
     gtk_entry_set_text(GTK_ENTRY(url_entry), "");
     gtk_label_set_text(GTK_LABEL(status_label), "Downloading...");
@@ -130,6 +141,8 @@ void stop_current_song() {
 }
 
 void play_song(const char *song_name) {
+    start_seek_bar_update_thread();
+    reset_seek_scale();
     stop_current_song();
 
     gchar *file_path = g_strdup_printf("file://%s/%s", music_dir, song_name);
@@ -141,7 +154,7 @@ void play_song(const char *song_name) {
     gtk_button_set_image(GTK_BUTTON(play_pause_button), pause_icon);
 
     current_position = 0;
-
+    pipeline_is_playing = TRUE; 
     g_free(file_path);
 }
 
@@ -276,8 +289,60 @@ void toggle_shuffle(GtkWidget *widget, gpointer data) {
 void on_volume_changed(GtkRange *range, gpointer data) {
     if (pipeline) {
         gdouble value = gtk_range_get_value(range);
-        g_object_set(pipeline, "volume", value, NULL);
+        gdouble volume = value / 100.0;
+        g_object_set(pipeline, "volume", volume, NULL);
+
     }
+}
+
+static void update_seek_bar_position_thread() {
+    while (pipeline_is_playing) {
+        if (pipeline) {
+            GstFormat format = GST_FORMAT_TIME;
+            gint64 current_position = 0;
+            gint64 duration = 0;
+
+            if (gst_element_query_position(pipeline, format, &current_position) &&
+                gst_element_query_duration(pipeline, format, &duration)) {
+
+                gdouble current_position_sec = (gdouble)current_position / GST_SECOND;
+                gdouble duration_sec = (gdouble)duration / GST_SECOND;
+
+                gtk_range_set_value(GTK_RANGE(seek_scale), current_position_sec);
+                gtk_range_set_range(GTK_RANGE(seek_scale), 0.0, duration_sec);
+
+                int current_minutes = (int)(current_position_sec / 60);
+                int current_seconds = (int)(current_position_sec) % 60;
+                gchar *current_time_text = g_strdup_printf("%02d:%02d", current_minutes, current_seconds);
+                gtk_label_set_text(GTK_LABEL(current_time_label), current_time_text);
+                g_free(current_time_text);
+
+                int total_minutes = (int)(duration_sec / 60);
+                int total_seconds = (int)(duration_sec) % 60;
+                gchar *total_time_text = g_strdup_printf("%02d:%02d", total_minutes, total_seconds);
+                gtk_label_set_text(GTK_LABEL(total_time_label), total_time_text);
+                g_free(total_time_text);
+            }
+        }
+        g_usleep(1000000); 
+    }
+}
+
+static void start_seek_bar_update_thread() {
+    g_thread_new("seek-bar-update", (GThreadFunc)update_seek_bar_position_thread, NULL);
+}
+
+void on_seek_changed(GtkRange *range, gpointer data) {
+    if (pipeline) {
+        gdouble seek_position_sec = gtk_range_get_value(GTK_RANGE(seek_scale)); 
+        gint64 seek_position_ns = seek_position_sec * 1000000000.0; 
+        gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
+                         GST_SEEK_TYPE_SET, seek_position_ns, GST_SEEK_TYPE_NONE, 0);
+    }
+}   
+
+void reset_seek_scale() {
+    gtk_range_set_value(GTK_RANGE(seek_scale), 0.0);  
 }
 
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
@@ -355,7 +420,7 @@ void ask_for_music_directory() {
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
         const char *selected_dir = gtk_file_chooser_get_filename(chooser);
-        music_dir = strdup(selected_dir);
+        music_dir = g_strdup(selected_dir);
         save_music_directory(music_dir); 
         load_songs_from_directory();
     }
@@ -416,6 +481,18 @@ void create_ui() {
     gtk_container_set_border_width(GTK_CONTAINER(vbox), 20);
     gtk_container_add(GTK_CONTAINER(main_window), vbox);
 
+    GtkWidget *time_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    current_time_label = gtk_label_new("0:00");
+    total_time_label = gtk_label_new("0:00");
+    gtk_box_pack_start(GTK_BOX(time_box), current_time_label, FALSE, FALSE, 0);
+    gtk_box_pack_end(GTK_BOX(time_box), total_time_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), time_box, FALSE, FALSE, 0);
+
+    seek_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
+    gtk_scale_set_draw_value(GTK_SCALE(seek_scale), FALSE);
+    g_signal_connect(seek_scale, "value-changed", G_CALLBACK(on_seek_changed), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), seek_scale, FALSE, FALSE, 0);
+
     GtkWidget *controls_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_box_pack_start(GTK_BOX(vbox), controls_hbox, FALSE, FALSE, 0);
 
@@ -454,8 +531,8 @@ void create_ui() {
     GtkWidget *volume_label = gtk_label_new("Volume:");
     gtk_box_pack_start(GTK_BOX(vbox), volume_label, FALSE, FALSE, 0);
 
-    volume_slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01); 
-    gtk_range_set_value(GTK_RANGE(volume_slider), 1.0); 
+    volume_slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 100.0, 1.0); 
+    gtk_range_set_value(GTK_RANGE(volume_slider), 100.0);
     g_signal_connect(volume_slider, "value-changed", G_CALLBACK(on_volume_changed), NULL);
     gtk_box_pack_start(GTK_BOX(vbox), volume_slider, FALSE, FALSE, 0);
 
@@ -501,7 +578,6 @@ int main(int argc, char *argv[]) {
     create_ui();
     add_css_style();
 
-  
     toggle_shuffle(NULL, NULL);
 
     if (!is_empty(&song_list)) {
