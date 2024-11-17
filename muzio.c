@@ -8,7 +8,6 @@
 #include <time.h>
 
 #define CONFIG_FILE "config.txt"
-void open_settings_window(GtkWidget *widget, gpointer data);
 
 typedef struct Node {
     char *song_name;
@@ -38,6 +37,37 @@ gint64 current_position = 0;
 gboolean is_loop_enabled = FALSE;
 gboolean is_shuffle_enabled = FALSE;
 char *music_dir = NULL;
+
+void init_list(CircularDoublyLinkedList *list);
+int is_empty(CircularDoublyLinkedList *list);
+void add_song(CircularDoublyLinkedList *list, const char *song_name);
+void *download_song_thread(void *data);
+void download_song_button(GtkWidget *widget, gpointer data);
+void stop_current_song();
+void play_song(const char *song_name);
+void pause_song();
+void resume_song();
+void play_pause_button_toggled(GtkWidget *widget, gpointer data);
+void play_next_song();
+void next_song_button(GtkWidget *widget, gpointer data);
+void play_previous_song();
+void previous_song_button(GtkWidget *widget, gpointer data);
+void toggle_loop(GtkWidget *widget, gpointer data);
+void shuffle_playlist(CircularDoublyLinkedList *list);
+void toggle_shuffle(GtkWidget *widget, gpointer data);
+void on_volume_changed(GtkRange *range, gpointer data);
+static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data);
+void save_music_directory(const char *dir);
+char *load_music_directory();
+void load_songs_from_directory();
+void ask_for_music_directory();
+void change_music_directory_button(GtkWidget *widget, gpointer data);
+void update_directory_label();
+void create_settings_ui();
+void open_settings_window(GtkWidget *widget, gpointer data);
+void create_ui();
+void add_css_style();
+int main(int argc, char *argv[]);
 
 void init_list(CircularDoublyLinkedList *list) {
     list->head = NULL;
