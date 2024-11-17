@@ -28,6 +28,7 @@ GtkWidget *play_pause_button;
 GtkWidget *change_dir_button;  
 GtkWidget *directory_label;
 GtkWidget *settings_button;
+GtkWidget *volume_slider;
 CircularDoublyLinkedList song_list;
 GMutex list_mutex;
 GThread *download_thread = NULL;
@@ -254,6 +255,13 @@ void toggle_shuffle(GtkWidget *widget, gpointer data) {
     }
 }
 
+void on_volume_changed(GtkRange *range, gpointer data) {
+    if (pipeline) {
+        gdouble value = gtk_range_get_value(range); // Get slider value (0.0 to 1.0)
+        g_object_set(pipeline, "volume", value, NULL);
+    }
+}
+
 // Modified bus call function to handle loop logic
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     switch (GST_MESSAGE_TYPE(msg)) {
@@ -437,6 +445,15 @@ void create_ui() {
     gtk_button_set_image(GTK_BUTTON(shuffle_button), shuffle_icon);
     g_signal_connect(shuffle_button, "clicked", G_CALLBACK(toggle_shuffle), NULL);
     gtk_box_pack_start(GTK_BOX(extra_controls_hbox), shuffle_button, TRUE, TRUE, 0);
+
+    // Volume slider
+    GtkWidget *volume_label = gtk_label_new("Volume:");
+    gtk_box_pack_start(GTK_BOX(vbox), volume_label, FALSE, FALSE, 0);
+
+    volume_slider = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0, 1.0, 0.01); // Range 0.0 to 1.0
+    gtk_range_set_value(GTK_RANGE(volume_slider), 1.0); // Default to 50% volume
+    g_signal_connect(volume_slider, "value-changed", G_CALLBACK(on_volume_changed), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), volume_slider, FALSE, FALSE, 0);
 
     // Settings button with settings icon
     GtkWidget *settings_button = gtk_button_new_from_icon_name("preferences-system", GTK_ICON_SIZE_BUTTON);
