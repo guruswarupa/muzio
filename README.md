@@ -1,6 +1,6 @@
-# Muzio - Music Player Application
+# Muzio - Music Player Application (Linux)
 
-Muzio is a simple music player application developed using GTK and C. It allows users to download songs from URLs (YouTube) and play them in a circular doubly linked list. The application is designed to be straightforward and user-friendly.
+Muzio is a simple music player application developed using GTK and C for Linux. It allows users to download songs from URLs (YouTube) and play them in a circular doubly linked list. The application is designed to be straightforward and user-friendly.
 
 ## Features
 
