@@ -198,8 +198,6 @@ void toggle_loop(GtkWidget *widget, gpointer data) {
         gtk_label_set_text(GTK_LABEL(status_label), "Looping disabled.");
     }
 
-    // Update the button's icon
-    gtk_button_set_image(GTK_BUTTON(widget), loop_icon);
 }
 
 // Function to shuffle the playlist
@@ -254,8 +252,6 @@ void toggle_shuffle(GtkWidget *widget, gpointer data) {
         shuffle_icon = gtk_image_new_from_icon_name("media-playlist-shuffle", GTK_ICON_SIZE_BUTTON);
         gtk_label_set_text(GTK_LABEL(status_label), "Shuffle disabled.");
     }
-
-    gtk_button_set_image(GTK_BUTTON(widget), shuffle_icon);
 }
 
 // Modified bus call function to handle loop logic
@@ -385,8 +381,7 @@ void open_settings_window(GtkWidget *widget, gpointer data) {
         // Create the settings window only once
         settings_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_title(GTK_WINDOW(settings_window), "Settings");
-        g_signal_connect(settings_window, "destroy", G_CALLBACK(gtk_widget_destroy), NULL);
-
+        g_signal_connect(settings_window, "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL);
         create_settings_ui();  // Set up the UI for the settings window
     }
 
