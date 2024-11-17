@@ -12,7 +12,7 @@ button {
     padding: 12px;
     margin: 5px;
     background-color: #00796b;  /* Teal color for buttons */
-    color: #ffffff;             /* White color for icons/text */
+    color: #000000;             /* White color for icons/text */
     border: none;
     border-radius: 8px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);

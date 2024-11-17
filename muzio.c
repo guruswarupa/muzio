@@ -76,6 +76,9 @@ void on_add_to_playlist_button_clicked(GtkWidget *widget, gpointer data);
 void on_create_playlist_button_clicked(GtkWidget *widget, gpointer data);
 void on_play_playlist_button_clicked(GtkWidget *widget, gpointer data);
 static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data);
+void free_song_list();
+void free_music_directory();
+void cleanup_resources();
 void save_music_directory(const char *dir);
 char *load_music_directory();
 void load_songs_from_directory();
@@ -474,16 +477,7 @@ void on_play_playlist_button_clicked(GtkWidget *widget, gpointer data) {
         return;
     }
 
-    if (!is_empty(&song_list)) {
-        Node *temp = song_list.head;
-        do {
-            Node *next = temp->next;
-            free(temp->song_name);
-            free(temp);
-            temp = next;
-        } while (temp != song_list.head);
-        init_list(&song_list);
-    }
+    free_song_list();
 
     char song_path[512];
     while (fgets(song_path, sizeof(song_path), file)) {
@@ -524,6 +518,32 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
             break;
     }
     return TRUE;
+}
+
+void free_song_list() {
+    if (!is_empty(&song_list)) {
+        Node *temp = song_list.head;
+        do {
+            Node *next = temp->next;
+            free(temp->song_name); 
+            free(temp);           
+            temp = next;
+        } while (temp != song_list.head);
+        init_list(&song_list);     
+    }
+}
+
+void free_music_directory() {   
+    if (music_dir) {
+        g_free(music_dir); 
+        music_dir = NULL;
+    }
+}
+
+void cleanup_resources() {   
+    free_song_list();         
+    free_music_directory();   
+    g_mutex_clear(&list_mutex); 
 }
 
 void save_music_directory(const char *dir) {
@@ -577,6 +597,7 @@ void ask_for_music_directory() {
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         GtkFileChooser *chooser = GTK_FILE_CHOOSER(dialog);
         const char *selected_dir = gtk_file_chooser_get_filename(chooser);
+        free_music_directory();
         music_dir = g_strdup(selected_dir);
         save_music_directory(music_dir); 
         load_songs_from_directory();
@@ -761,7 +782,12 @@ int main(int argc, char *argv[]) {
     gtk_widget_show_all(main_window);
     gtk_main();
 
-    gst_element_set_state(pipeline, GST_STATE_NULL);
-    gst_object_unref(pipeline);
+    cleanup_resources();
+    if (pipeline) {
+        gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+        pipeline = NULL;
+    }
+   
     return 0;
 }
