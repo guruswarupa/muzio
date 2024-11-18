@@ -46,8 +46,6 @@ gboolean is_loop_enabled = FALSE;
 gboolean is_shuffle_enabled = FALSE;
 char *music_dir = NULL;
 gboolean pipeline_is_playing = FALSE;
-static guint seek_timeout_id = 0;
-static gboolean seeking_in_progress = FALSE;
 
 void init_list(CircularDoublyLinkedList *list);
 int is_empty(CircularDoublyLinkedList *list);
@@ -339,7 +337,7 @@ static void update_seek_bar_position_thread() {
                 g_free(total_time_text);
             }
         }
-        g_usleep(500000);
+        g_usleep(1000000); 
     }
 }
 
@@ -349,13 +347,15 @@ static void start_seek_bar_update_thread() {
 
 void on_seek_changed(GtkRange *range, gpointer data) {
     if (pipeline) {
-        gdouble seek_position_sec = gtk_range_get_value(GTK_RANGE(seek_scale));
-        gint64 seek_position_ns = seek_position_sec * 1000000000.0;
+        gdouble seek_position_sec = gtk_range_get_value(GTK_RANGE(seek_scale)); 
+        gint64 seek_position_ns = seek_position_sec * 1000000000.0; 
+        gst_element_seek(pipeline, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
+                         GST_SEEK_TYPE_SET, seek_position_ns, GST_SEEK_TYPE_NONE, 0);
     }
-}
+}   
 
 void reset_seek_scale() {
-    gtk_range_set_value(GTK_RANGE(seek_scale), 0.0);
+    gtk_range_set_value(GTK_RANGE(seek_scale), 0.0);  
 }
 
 void create_playlist(const char *playlist_name) {
@@ -375,7 +375,6 @@ void create_playlist(const char *playlist_name) {
             gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(playlist_combo_box), playlist_name);
         } else {
             gtk_label_set_text(GTK_LABEL(status_label), "Error: Playlist combo box not initialized.");
-            return;
         }
 
         char message[256];
